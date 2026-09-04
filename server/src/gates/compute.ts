@@ -177,6 +177,12 @@ export function evaluatePlan(plan: ComputationPlan, spans: Span[]): Verdict {
 
     if (!Number.isFinite(raw)) refuse("The computation did not produce a finite value.");
 
+    if (
+      !Array.isArray(plan.cited_spans) ||
+      !plan.cited_spans.every((id) => typeof id === "string")
+    ) {
+      refuse("The cited sources are malformed.");
+    }
     const cited = new Set(plan.cited_spans ?? []);
     for (const id of used) {
       if (!cited.has(id)) refuse("A source used by the computation is missing from cited_spans.");
