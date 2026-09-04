@@ -1,14 +1,19 @@
 import type { Span } from "./gates/redact.js";
 
 const TOTAL_LABEL = /\b(total|net|nett|subtotal|balance|gross)\b/i;
+const NUMERIC_VALUE = /^\s*(?:RM|MYR|\$)?\s*(\()?\s*(-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*(\))?\s*%?\s*$/i;
 
 function parseNumber(text: string): number | null {
-  const negative = /^\(.*\)$/.test(text.trim());
-  const cleaned = text.replace(/[()]/g, "").replace(/[^0-9.-]/g, "");
-  if (!/\d/.test(cleaned)) return null;
-  const n = Number(cleaned);
+  const match = text.match(NUMERIC_VALUE);
+  if (!match) return null;
+
+  const opens = Boolean(match[1]);
+  const closes = Boolean(match[3]);
+  if (opens !== closes || (opens && match[2]!.startsWith("-"))) return null;
+
+  const n = Number(match[2]!.replaceAll(",", ""));
   if (!Number.isFinite(n)) return null;
-  return negative ? -n : n;
+  return opens ? -n : n;
 }
 
 /** Splits pasted document text into labelled spans the gates can reason over. */
