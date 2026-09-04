@@ -107,10 +107,45 @@ Mapped to the five zones from the challenge's Custom Instructions framework.
 | Inter-System Communication | API key leaks to the browser | Key lives in Secret Manager, read backend-only; never serialised to a response |
 | Inter-System Communication | Public endpoint drains the quota | Per-UID daily bucket plus `--max-instances=3` |
 
-**On the Firebase web config:** the `apiKey` in `web/src/firebase.ts` is public by
-design. It identifies the project; it is not a credential. Access control comes from
-Firestore rules and Firebase Auth. The **Gemini** key is the real secret, and it never
-leaves the backend.
+### On the Firebase web API key
+
+`web/src/firebase.ts` contains an `AIzaSy...` string, and automated secret scanners
+flag it. It is not a leak, and it is worth being precise about why.
+
+A Firebase Web API key **identifies a project; it authorises nothing**. Google states
+it directly: *"API keys for Firebase services are not used to control access to backend
+resources; that can only be done with Firebase Security Rules."*
+
+It also **cannot** be hidden. The browser needs it to reach the auth endpoint, so every
+Firebase web app on the internet ships it. Moving it into a `.env` and injecting it at
+build time is theatre — the bundler inlines it into the JavaScript, where anyone can
+read it:
+
+```bash
+curl -s https://<host>/assets/index-*.js | grep -o 'AIzaSy[A-Za-z0-9_-]*'
+```
+
+That command is worth running against this deployment. It returns exactly one string:
+this key. It never returns the Gemini key, which is the real secret and stays in Secret
+Manager, backend-only.
+
+**The residual risk is real but different from "it is visible":** an *unrestricted*
+Google API key can be aimed at other APIs enabled on the project. So this key is
+restricted on both axes:
+
+| Restriction | Value |
+|---|---|
+| HTTP referrers | the Cloud Run origin and `localhost` only |
+| API targets | `identitytoolkit`, `securetoken`, `firestore`, `firebase`, `firebaseinstallations` |
+
+Verify with:
+
+```bash
+gcloud services api-keys describe <KEY_UID> --project=<PROJECT> --format='yaml(restrictions)'
+```
+
+Deleting or rotating the key achieves nothing, because the replacement is equally
+public. Restricting it is the control that actually matters.
 
 ---
 
