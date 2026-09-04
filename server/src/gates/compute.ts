@@ -30,6 +30,12 @@ const CONST_PREFIX = "const:";
 const MAX_STEPS = 12;
 const PLACEHOLDER = "{{v}}";
 const STEP_ID = /^t\d{1,3}$/;
+const ANSWER_TEMPLATES = [
+  "The verified result is {{v}}.",
+  "The verified amount is {{v}}.",
+  "The verified percentage is {{v}}%.",
+  "The verified count is {{v}}.",
+] as const;
 
 // A flat list of uniform objects. No numeric type appears anywhere, so a model
 // generating within this grammar cannot express a figure of its own.
@@ -38,7 +44,8 @@ export const COMPUTATION_SCHEMA = {
   properties: {
     answer_template: {
       type: "STRING",
-      description: `the sentence to show, containing ${PLACEHOLDER} where the value belongs`,
+      enum: [...ANSWER_TEMPLATES],
+      description: "a server-approved sentence for the verified value",
     },
     steps: {
       type: "ARRAY",
@@ -112,8 +119,11 @@ export function evaluatePlan(plan: ComputationPlan, spans: Span[]): Verdict {
       refuse("The document does not contain what is needed to answer this.");
     }
 
-    if (!plan?.answer_template?.includes(PLACEHOLDER)) {
-      refuse(`The answer template has no ${PLACEHOLDER} placeholder.`);
+    if (
+      typeof plan?.answer_template !== "string" ||
+      !ANSWER_TEMPLATES.includes(plan.answer_template as (typeof ANSWER_TEMPLATES)[number])
+    ) {
+      refuse("The answer template is not allowed.");
     }
 
     const steps = plan.steps ?? [];
