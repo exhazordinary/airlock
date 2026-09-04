@@ -49,16 +49,23 @@ app.post("/api/ask", requireAuth, async (req, res) => {
 
   let model: string | null = null;
   let verdict;
-  try {
-    const result = await requestPlan(modelSaw);
-    model = result.model;
-    // GATE 2.
-    verdict = evaluatePlan(result.plan, spans);
-  } catch (err) {
+  if (injectionFlagged) {
     verdict = {
       status: "CANNOT_VERIFY" as const,
-      reason: (err as Error).message ?? "The model could not be reached.",
+      reason: "Potential prompt injection detected. Nothing was sent to the AI service.",
     };
+  } else {
+    try {
+      const result = await requestPlan(modelSaw);
+      model = result.model;
+      // GATE 2.
+      verdict = evaluatePlan(result.plan, spans);
+    } catch {
+      verdict = {
+        status: "CANNOT_VERIFY" as const,
+        reason: "AIRLOCK could not safely verify an answer. Please try again.",
+      };
+    }
   }
 
   const answer =
