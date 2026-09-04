@@ -1,0 +1,250 @@
+# AIRLOCK
+
+**An AI that hands you a receipt for every answer.**
+
+A private assistant for household paperwork — payslips, utility bills, tenancy
+agreements, insurance letters. Sign in with Google, add a document, ask questions
+about it.
+
+An airlock is a two-door chamber where both doors are never open at once. That is the
+architecture, not a metaphor. Two deterministic gates flank the model:
+**nothing sensitive goes in, nothing unproven comes out.**
+
+> Built for the Google Cloud Gen AI Academy APAC Cohort 3 Ideathon.
+> All sample data in this repository is synthetic.
+
+---
+
+## What makes it different
+
+Most AI document tools ask the model to be careful. AIRLOCK removes the model's
+ability to be careless.
+
+### Gate 1 — Redaction (inbound)
+
+Malaysian PII is masked to stable tokens (`[NRIC_1]`, `[ACCT_1]`) by a deterministic
+pass that runs **before a Gemini call exists in the code path**. Two rule families:
+
+- **Pattern rules** over span text — NRIC (validated against a real birth date, not a
+  bare 12-digit run), Malaysian phone numbers, bank accounts, email.
+- **Label rules** over column and row headers — in a table the header already declares
+  the column's type, so no NER model is needed to infer what the schema states.
+
+Two guards that are easy to get wrong and are covered by tests:
+
+- A span flagged as a computed total is never masked. Masking one silently turns a
+  verifiable figure into a redacted one.
+- The account label rule demands an explicit number-word (`account no`, not `account`).
+  Financial prose is full of the word "accounts"; a row labelled *"Total per audited
+  accounts"* must survive intact.
+
+`assertClean(payload)` is the last line of defence, called in the provider layer
+immediately before bytes leave the process. If Gate 1 did its job it never fires, which
+is exactly why it is cheap to keep — and it makes the guarantee structural rather than a
+prompt instruction.
+
+The UI exposes this directly: **"show what the model saw"** renders the exact payload
+sent upstream.
+
+### Gate 2 — Computation (outbound)
+
+Gemini is never asked for a figure. It returns a computation tree, constrained by
+`responseSchema`:
+
+```json
+{ "answer_template": "You were deducted {{v}} in total",
+  "computation": { "op": "sum",
+                   "args": [ {"span": "s10"}, {"span": "s11"}, {"span": "s12"} ] },
+  "cited_spans": ["s10", "s11", "s12"] }
+```
+
+**The schema has no literal node type.** Only span references and a small allowlisted
+constant enum for unit conversion and counting. "The model cannot state a number" is
+therefore a property of the grammar it generates *within*, not a check applied after the
+fact. A recursive evaluator resolves the tree against the document's spans:
+
+- resolves, and every span it used was cited → green **VERIFIED**, with the cited spans shown
+- unknown span, redacted span, division by zero, wrong arity, excessive depth, or a span
+  used but not cited → amber **CANNOT VERIFY**, with the reason
+
+No code is generated and none is executed, so there is no sandbox to escape.
+
+### Trust Ledger
+
+Every interaction writes an audit record under the user's UID: redactions applied, the
+exact payload the model saw, which model answered, the verdict, latency, and whether a
+prompt-injection attempt was detected.
+
+Receipts are written **only** by the backend through the Admin SDK. Firestore rules set
+`allow write: if false` on that path, so a user can read their own audit trail but
+cannot forge one.
+
+---
+
+## How the required technologies are used
+
+| Technology | Role in AIRLOCK |
+|---|---|
+| **Firebase Authentication** | Google Sign-In, no passwords handled. The UID is the isolation key for every Firestore path and the identity for the per-user rate limiter. Every API request carries an ID token, verified server-side with `firebase-admin` before any work begins. |
+| **Cloud Firestore** | User-partitioned storage for documents, the Trust Ledger, and the daily quota bucket. Security rules enforce owner-bound reads and deny all client writes to receipts and quota. |
+| **Cloud Run** | Hosts a single container serving both the built React app and the API, so there is one URL and no CORS surface. Scales to zero, capped at 3 instances as an abuse ceiling on a public LLM endpoint. |
+| **Gemini API (AI Studio)** | Powers extraction and reasoning, constrained by `responseSchema` to emit only a computation tree. The key is fetched from Secret Manager at runtime and never reaches a client. A model ladder steps down on quota exhaustion. |
+
+---
+
+## Threat model
+
+Mapped to the five zones from the challenge's Custom Instructions framework.
+
+| Zone | Threat | Mitigation |
+|---|---|---|
+| Input Surfaces | Pasted document carries NRIC, bank account, phone | Gate 1 masks before any egress; `assertClean` throws on leak |
+| Input Surfaces | Prompt injection hidden in the document | Output grammar cannot express a number; attempt is flagged and logged |
+| Planning & Reasoning | Model asserts a plausible but wrong figure | Gate 2 refuses anything it cannot resolve from cited spans |
+| Tool Execution | Model-authored code escapes a sandbox | No code is generated or executed at all |
+| Memory & State | User A reads user B's history | Owner-bound rules; UID from a verified ID token, never from the request body |
+| Memory & State | User forges a clean audit record | Receipts are `allow write: if false`; server-only via Admin SDK |
+| Inter-System Communication | API key leaks to the browser | Key lives in Secret Manager, read backend-only; never serialised to a response |
+| Inter-System Communication | Public endpoint drains the quota | Per-UID daily bucket plus `--max-instances=3` |
+
+**On the Firebase web config:** the `apiKey` in `web/src/firebase.ts` is public by
+design. It identifies the project; it is not a credential. Access control comes from
+Firestore rules and Firebase Auth. The **Gemini** key is the real secret, and it never
+leaves the backend.
+
+---
+
+## Security rules
+
+```javascript
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    match /users/{userId}/documents/{docId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    match /users/{userId}/receipts/{receiptId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/quota/{quotaId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+```
+
+---
+
+## Reproducing this deployment
+
+Requires `gcloud`, `firebase-tools`, and Node 22+.
+
+```bash
+PROJECT=your-project-id
+REGION=asia-southeast1
+
+# 1. Project and APIs
+gcloud projects create "$PROJECT"
+gcloud billing projects link "$PROJECT" --billing-account=YOUR_BILLING_ACCOUNT
+gcloud services enable run.googleapis.com firestore.googleapis.com \
+  secretmanager.googleapis.com identitytoolkit.googleapis.com \
+  firebase.googleapis.com cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com --project="$PROJECT"
+
+# 2. Firestore
+gcloud firestore databases create --location="$REGION" \
+  --type=firestore-native --project="$PROJECT"
+
+# 3. Firebase + Google Sign-In
+firebase projects:addfirebase "$PROJECT"
+firebase apps:create WEB "AIRLOCK Web" --project "$PROJECT"
+firebase apps:sdkconfig WEB <appId> --project "$PROJECT"   # paste into web/src/firebase.ts
+# Enable Google in the console: Authentication -> Sign-in method -> Google
+
+# 4. Gemini key into Secret Manager
+printf '%s' 'YOUR_AI_STUDIO_KEY' | gcloud secrets create GEMINI_API_KEY \
+  --data-file=- --replication-policy=automatic --project="$PROJECT"
+
+PROJECT_NUMBER=$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')
+gcloud secrets add-iam-policy-binding GEMINI_API_KEY \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role=roles/secretmanager.secretAccessor --project="$PROJECT"
+
+gcloud projects add-iam-policy-binding "$PROJECT" \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role=roles/datastore.user
+
+# 5. Rules
+firebase deploy --only firestore:rules --project "$PROJECT"
+
+# 6. Deploy. The label is required for challenge verification.
+gcloud run deploy airlock --source . --region="$REGION" --project="$PROJECT" \
+  --allow-unauthenticated --min-instances=0 --max-instances=3 --memory=512Mi \
+  --labels=dev-tutorial=cloud-run-ai-challenge
+
+# 7. Authorize the Cloud Run domain for Firebase Auth.
+# Firebase only auto-authorizes *.firebaseapp.com and *.web.app, so signInWithPopup
+# fails with auth/unauthorized-domain from a *.run.app origin until you add it.
+RUN_DOMAIN=$(gcloud run services describe airlock --region="$REGION" \
+  --project="$PROJECT" --format='value(status.url)' | sed 's#https://##')
+
+curl -s -X PATCH \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  -H "X-Goog-User-Project: $PROJECT" \
+  "https://identitytoolkit.googleapis.com/admin/v2/projects/$PROJECT/config?updateMask=authorizedDomains" \
+  -d "{\"authorizedDomains\":[\"localhost\",\"$PROJECT.firebaseapp.com\",\"$PROJECT.web.app\",\"$RUN_DOMAIN\"]}"
+```
+
+The allowlist is on the domain *initiating* the OAuth flow. It is what stops a cloned
+frontend on someone else's domain from harvesting sign-ins against this project.
+
+### Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `GEMINI_MODELS` | `gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-3-flash-preview,gemini-3.1-flash-lite` | Model ladder, newest first. Free-tier quota is per project **per model**, so each rung is a separate budget. |
+| `DAILY_LIMIT` | `25` | Questions per user per day |
+| `GEMINI_API_KEY` | unset | Local development only. In production the key is read from Secret Manager. |
+
+### Local development
+
+```bash
+cd server && npm install && npm run dev     # :8080
+cd web    && npm install && npm run dev     # :5173, proxies /api
+```
+
+---
+
+## Layout
+
+```
+server/src/gates/redact.ts    Gate 1 — pattern and label rules, assertClean
+server/src/gates/compute.ts   Gate 2 — schema with no literal node, evaluator
+server/src/gemini.ts          Provider, model ladder, injection detection
+server/src/auth.ts            Firebase ID-token middleware
+server/src/ratelimit.ts       Per-UID daily bucket
+server/src/receipts.ts        Trust Ledger writer, Admin SDK only
+server/src/spans.ts           Document text into labelled spans
+web/src/App.tsx               UI, redaction reveal, receipts
+firestore.rules               Owner-bound access, server-only writes
+CUSTOM_INSTRUCTIONS.md        AI Studio Custom Instructions used to build this
+```
+
+## Licence
+
+MIT
