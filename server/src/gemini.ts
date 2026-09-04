@@ -3,15 +3,20 @@ import { assertClean, type Span } from "./gates/redact.js";
 import { COMPUTATION_SCHEMA, type ComputationPlan } from "./gates/compute.js";
 import { geminiKey } from "./secrets.js";
 
-// Model ids come from config. Free-tier quota is metered per project per model,
-// so each rung is a separate budget rather than a fallback of last resort.
-const LADDER = (
-  process.env.GEMINI_MODELS ??
-  "gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-3-flash-preview,gemini-3.1-flash-lite"
-)
-  .split(",")
-  .map((m) => m.trim())
-  .filter(Boolean);
+const PUBLIC_MODEL_ERROR = "The AI service is temporarily unavailable. Please try again.";
+const DEFAULT_ATTEMPT_TIMEOUT_MS = 12_000;
+const DEFAULT_TOTAL_TIMEOUT_MS = 45_000;
+
+const configuredModels = (): string[] =>
+  (process.env.GEMINI_MODELS ?? "")
+    .split(",")
+    .map((model) => model.trim())
+    .filter(Boolean);
+
+const configuredTimeout = (name: string, fallback: number): number => {
+  const value = Number(process.env[name]);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+};
 
 const INJECTION = [
   /ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions/i,
@@ -19,6 +24,9 @@ const INJECTION = [
   /reveal\s+(?:your\s+)?(?:system\s+)?prompt/i,
   /you\s+are\s+now\s+(?:a|an)\s/i,
   /print\s+(?:your\s+)?(?:instructions|system)/i,
+  /forget\s+(?:all\s+)?(?:previous|prior|above|earlier)\s+(?:instructions|rules)/i,
+  /override\s+(?:the\s+)?(?:previous|prior|above|system)\s+(?:instructions|rules)/i,
+  /do\s+not\s+follow\s+(?:the\s+)?(?:previous|prior|above|earlier)\s+(?:instructions|rules)/i,
 ];
 
 export const looksLikeInjection = (text: string): boolean =>
@@ -67,7 +75,7 @@ ${question}`;
 
 const retryable = (err: unknown): boolean => {
   const msg = String((err as Error)?.message ?? err);
-  return /429|RESOURCE_EXHAUSTED|quota|rate limit|503|UNAVAILABLE|deadline/i.test(msg);
+  return /404|429|500|503|NOT_FOUND|RESOURCE_EXHAUSTED|INTERNAL|UNAVAILABLE|quota|rate limit|deadline|timeout/i.test(msg);
 };
 
 export interface PlanResult {
@@ -77,21 +85,36 @@ export interface PlanResult {
 
 /** Walks the ladder, stepping down only on quota or availability failures. */
 export async function requestPlan(prompt: string): Promise<PlanResult> {
-  // AIRGAP's last line of defence, immediately before the bytes leave.
+  // AIRLOCK's last line of defence, immediately before the bytes leave.
   assertClean(prompt);
 
+  const models = configuredModels();
+  if (models.length === 0) throw new Error(PUBLIC_MODEL_ERROR);
+
   const ai = new GoogleGenAI({ apiKey: await geminiKey() });
+  const attemptTimeout = configuredTimeout(
+    "GEMINI_ATTEMPT_TIMEOUT_MS",
+    DEFAULT_ATTEMPT_TIMEOUT_MS,
+  );
+  const totalTimeout = configuredTimeout("GEMINI_TOTAL_TIMEOUT_MS", DEFAULT_TOTAL_TIMEOUT_MS);
+  const abortSignal = AbortSignal.timeout(totalTimeout);
   let lastError: unknown = new Error("no models configured");
 
-  for (const model of LADDER) {
+  for (const model of models) {
     try {
       const res = await ai.models.generateContent({
         model,
         contents: prompt,
         config: {
           temperature: 0.2,
+          maxOutputTokens: 512,
           responseMimeType: "application/json",
           responseSchema: COMPUTATION_SCHEMA as object,
+          abortSignal,
+          httpOptions: {
+            timeout: attemptTimeout,
+            retryOptions: { attempts: 1 },
+          },
         },
       });
 
@@ -100,9 +123,11 @@ export async function requestPlan(prompt: string): Promise<PlanResult> {
       return { plan: JSON.parse(text) as ComputationPlan, model };
     } catch (err) {
       lastError = err;
-      if (!retryable(err)) throw err;
+      if (abortSignal.aborted || !retryable(err)) {
+        throw new Error(PUBLIC_MODEL_ERROR, { cause: err });
+      }
     }
   }
 
-  throw new Error(`Every model on the ladder is exhausted. Last: ${String(lastError)}`);
+  throw new Error(PUBLIC_MODEL_ERROR, { cause: lastError });
 }
