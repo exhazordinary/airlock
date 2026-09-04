@@ -90,9 +90,9 @@ const format = (v: number): string =>
 
 function spanValue(id: string, facts: Map<string, Span>, used: Set<string>): number {
   const span = facts.get(id);
-  if (!span) refuse(`The computation refers to an unknown value "${id}".`);
+  if (!span) refuse("The computation refers to an unknown source.");
   if (span.redacted || span.value === null || span.value === undefined) {
-    refuse(`The computation cites a redacted span "${id}".`);
+    refuse("The computation cites a redacted source.");
   }
   used.add(id);
   return span.value as number;
@@ -130,7 +130,7 @@ export function evaluatePlan(plan: ComputationPlan, spans: Span[]): Verdict {
     if (!Array.isArray(steps)) refuse("The steps are malformed.");
 
     if (steps.length > MAX_STEPS) {
-      refuse(`Too many steps (${steps.length}); the limit is ${MAX_STEPS}.`);
+      refuse("The computation has too many steps.");
     }
 
     const facts = new Map(spans.map((s) => [s.id, s]));
@@ -141,23 +141,23 @@ export function evaluatePlan(plan: ComputationPlan, spans: Span[]): Verdict {
       if (!step || typeof step.id !== "string" || !STEP_ID.test(step.id)) {
         refuse("The computation contains a malformed step.");
       }
-      if (computed.has(step.id)) refuse(`Duplicate step id "${step.id}".`);
-      if (!OPS.includes(step.op)) refuse(`"${String(step.op)}" is not a supported operation.`);
+      if (computed.has(step.id)) refuse("The computation contains a duplicate step identifier.");
+      if (!OPS.includes(step.op)) refuse("The computation contains an unsupported operation.");
       if (!Array.isArray(step.args)) refuse("The computation contains a malformed step.");
 
       const binary = step.op !== "sum";
       if (binary && step.args.length !== 2) {
-        refuse(`Wrong arity: "${step.op}" takes 2 arguments, got ${step.args.length}.`);
+        refuse("Wrong arity for the selected operation.");
       }
       if (!binary && step.args.length < 1) {
-        refuse(`Wrong arity: "sum" needs at least 1 argument.`);
+        refuse("Wrong arity for the selected operation.");
       }
 
       const values = step.args.map((arg) => {
         if (typeof arg !== "string") refuse("The computation contains a malformed argument.");
         if (arg.startsWith(CONST_PREFIX)) {
           const c = CONSTANTS[arg.slice(CONST_PREFIX.length)];
-          if (c === undefined) refuse(`"${arg}" is not an allowed constant.`);
+          if (c === undefined) refuse("The computation uses a constant that is not allowed.");
           return c;
         }
         // Only steps already computed resolve, so a forward reference cannot.
@@ -173,13 +173,13 @@ export function evaluatePlan(plan: ComputationPlan, spans: Span[]): Verdict {
       ? computed.get(target)!
       : facts.has(target)
         ? spanValue(target, facts, used)
-        : refuse(`The result "${String(target)}" does not name a known step or span.`);
+        : refuse("The result does not name a known step or source.");
 
     if (!Number.isFinite(raw)) refuse("The computation did not produce a finite value.");
 
     const cited = new Set(plan.cited_spans ?? []);
     for (const id of used) {
-      if (!cited.has(id)) refuse(`The computation used span "${id}" but it is not in cited_spans.`);
+      if (!cited.has(id)) refuse("A source used by the computation is missing from cited_spans.");
     }
 
     const value = clean(raw);
