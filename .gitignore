@@ -1,0 +1,27 @@
+CLAUDE.md
+.claude/
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.example
+*.local
+.DS_Store
+coverage/
+.firebase/
+firebase-debug.log
+*.log
+serviceAccountKey.json
+
+# tests stay local
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__/
+tests/
+vitest.config.*
+
+# build artifacts
+*.tsbuildinfo
