@@ -13,6 +13,9 @@ architecture, not a metaphor. Two deterministic gates flank the model:
 > Built for the Google Cloud Gen AI Academy APAC Cohort 3 Ideathon.
 > All sample data in this repository is synthetic.
 
+**[Open the live Cloud Run app](https://airlock-x5bsmjxusa-as.a.run.app)** ·
+**[View the public source](https://github.com/exhazordinary/airlock)**
+
 ---
 
 ## What makes it different
@@ -48,22 +51,22 @@ sent upstream.
 
 ### Gate 2 — Computation (outbound)
 
-Gemini is never asked for a figure. It returns a computation tree, constrained by
+Gemini is never asked for a figure. It returns a flat computation plan, constrained by
 `responseSchema`:
 
 ```json
-{ "answer_template": "You were deducted {{v}} in total",
-  "computation": { "op": "sum",
-                   "args": [ {"span": "s10"}, {"span": "s11"}, {"span": "s12"} ] },
+{ "answer_template": "The verified amount is {{v}}.",
+  "steps": [ { "id": "t1", "op": "sum", "args": ["s10", "s11", "s12"] } ],
+  "result": "t1",
   "cited_spans": ["s10", "s11", "s12"] }
 ```
 
 **The schema has no literal node type.** Only span references and a small allowlisted
 constant enum for unit conversion and counting. "The model cannot state a number" is
 therefore a property of the grammar it generates *within*, not a check applied after the
-fact. A recursive evaluator resolves the tree against the document's spans:
+fact. A deterministic evaluator resolves the ordered steps against the document's spans:
 
-- resolves, and every span it used was cited → green **VERIFIED**, with the cited spans shown
+- resolves, and every span it used was cited → green **VERIFIED**, with cited span IDs shown
 - unknown span, redacted span, division by zero, wrong arity, excessive depth, or a span
   used but not cited → amber **CANNOT VERIFY**, with the reason
 
@@ -88,7 +91,7 @@ cannot forge one.
 | **Firebase Authentication** | Google Sign-In, no passwords handled. The UID is the isolation key for every Firestore path and the identity for the per-user rate limiter. Every API request carries an ID token, verified server-side with `firebase-admin` before any work begins. |
 | **Cloud Firestore** | User-partitioned storage for documents, the Trust Ledger, and the daily quota bucket. Security rules enforce owner-bound reads and deny all client writes to receipts and quota. |
 | **Cloud Run** | Hosts a single container serving both the built React app and the API, so there is one URL and no CORS surface. Scales to zero, capped at 3 instances as an abuse ceiling on a public LLM endpoint. |
-| **Gemini API (AI Studio)** | Powers extraction and reasoning, constrained by `responseSchema` to emit only a computation tree. The key is fetched from Secret Manager at runtime and never reaches a client. A model ladder steps down on quota exhaustion. |
+| **Gemini API (AI Studio)** | Powers extraction and reasoning, constrained by `responseSchema` to emit only a flat computation plan. The key is fetched from Secret Manager at runtime and never reaches a client. A model ladder steps down on quota exhaustion. |
 
 ---
 
@@ -229,6 +232,7 @@ firebase deploy --only firestore:rules --project "$PROJECT"
 # 6. Deploy. The label is required for challenge verification.
 gcloud run deploy airlock --source . --region="$REGION" --project="$PROJECT" \
   --allow-unauthenticated --min-instances=0 --max-instances=3 --memory=512Mi \
+  --set-env-vars='^@^GEMINI_MODELS=gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-3-flash-preview,gemini-3.1-flash-lite' \
   --labels=dev-tutorial=cloud-run-ai-challenge
 
 # 7. Authorize the Cloud Run domain for Firebase Auth.
@@ -252,7 +256,9 @@ frontend on someone else's domain from harvesting sign-ins against this project.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `GEMINI_MODELS` | `gemini-3.8-flash,gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash,gemini-3-flash-preview,gemini-3.1-flash-lite` | Model ladder, newest first. Free-tier quota is per project **per model**, so each rung is a separate budget. |
+| `GEMINI_MODELS` | required | Comma-separated model ladder, newest first. Free-tier quota is per project **per model**, so each rung is a separate budget. |
+| `GEMINI_ATTEMPT_TIMEOUT_MS` | `12000` | Maximum time for one model attempt |
+| `GEMINI_TOTAL_TIMEOUT_MS` | `45000` | Maximum time across the full ladder |
 | `DAILY_LIMIT` | `25` | Questions per user per day |
 | `GEMINI_API_KEY` | unset | Local development only. In production the key is read from Secret Manager. |
 

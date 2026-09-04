@@ -17,7 +17,7 @@ agreements, insurance letters, medical bills. Sign in with Google, add a documen
 ask questions about it.
 
 It keeps the starter journal app's skeleton exactly:
-`auth -> private dashboard -> multi-turn Gemini chat -> save to Firestore -> history`.
+`auth -> private dashboard -> Gemini question -> save receipt to Firestore -> history`.
 Every base component is retained and load-bearing. What changed is *what* you journal
 (paperwork, not feelings) and that history gained a purpose: the Trust Ledger.
 
@@ -70,30 +70,30 @@ rather than a prompt instruction.
 
 ## 4. Gate 2 — Computation (outbound)
 
-Gemini is never asked for a figure. It returns a computation tree, constrained by
+Gemini is never asked for a figure. It returns a flat computation plan, constrained by
 `responseSchema`:
 
 ```json
-{ "answer_template": "Your net pay is {{v}}",
-  "computation": { "op": "subtract",
-                   "args": [ {"span": "s3"}, {"span": "s7"} ] },
+{ "answer_template": "The verified amount is {{v}}.",
+  "steps": [ { "id": "t1", "op": "subtract", "args": ["s3", "s7"] } ],
+  "result": "t1",
   "cited_spans": ["s3", "s7"] }
 ```
 
 **The schema has no literal node type.** Only span references and a small allowlisted
 constant enum for unit conversion and counting. "The model cannot state a number" is
 therefore a property of the grammar it generates within, not a check applied after the
-fact. A recursive evaluator resolves the tree against spans extracted from the source.
+fact. A deterministic evaluator resolves ordered steps against spans extracted from the source.
 
-- resolves and agrees within tolerance -> green **VERIFIED**, source span highlighted
-- unknown span, malformed tree, or disagreement -> amber **CANNOT VERIFY** with the reason
+- resolves with complete citations -> green **VERIFIED**, cited span IDs shown
+- unknown span, malformed plan, or unsafe output -> amber **CANNOT VERIFY** with the reason
 
 No code is generated and none is executed.
 
 ## 5. Trust Ledger
 
 One server-written audit record per interaction, under the user's UID: redactions
-applied, model used, verdict, latency, tokens, injection flags. Surfaced as a
+applied, model used, verdict, latency, and injection flags. Surfaced as a
 "Receipts" tab.
 
 Client writes are denied by security rules. A user can read their receipts; they
@@ -152,14 +152,14 @@ Gemini free-tier quota is metered per project **per model**, observed as low as 
 requests per day. A second model is a second budget, so the provider ladders
 `gemini-3.8-flash -> gemini-3.7-flash -> gemini-3.6-flash -> gemini-3.5-flash ->
 gemini-3-flash-preview -> gemini-3.1-flash-lite`
-and steps down on exhaustion. A cached Demo Mode keeps the walkthrough independent of
-live quota.
+and steps down on exhaustion. Each attempt and the full ladder have server-side timeouts;
+the UI fails closed with CANNOT VERIFY when live quota is unavailable.
 
 ## 9. Deliverables
 
-- [ ] Cloud Run service labelled `dev-tutorial=cloud-run-ai-challenge`
-- [ ] Public working Cloud Run URL
-- [ ] Public repo with frontend, backend, README, `firestore.rules`, reproduction config
+- [x] Cloud Run service labelled `dev-tutorial=cloud-run-ai-challenge`
+- [x] Public working Cloud Run URL
+- [x] Public repo with frontend, backend, README, `firestore.rules`, reproduction config
 - [ ] Social post carrying `#AccelerateAIwithCloudRun`
 - [ ] Brief description naming Firebase Auth, Firestore, Cloud Run and Gemini
 - [ ] All fields in the Ideathon Prototype Submission tab
