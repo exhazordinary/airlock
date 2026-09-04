@@ -14,26 +14,30 @@ export interface Span {
 // The birth-date component is what makes this safe; a bare 12-digit rule also
 // matches account numbers and invoice ids.
 const NRIC = /(?<!\d)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])-\d{2}-\d{4}(?!\d)/g;
-const PHONE = /(?<!\d)(?:\+?60|0)1\d[-\s]?\d{3,4}[-\s]?\d{4}(?!\d)/g;
+const PHONE = /(?<!\d)(?:\+?60|0)\s?(?:1\d[-\s]?\d{3,4}[-\s]?\d{4}|3[-\s]?\d{4}[-\s]?\d{4}|[4-79][-\s]?\d{3}[-\s]?\d{4}|8\d[-\s]?\d{3}[-\s]?\d{3})(?!\d)/g;
 const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
-const ACCT = /(?<!\d)\d{12}(?!\d)/g;
+const ACCOUNT_CONTEXT = /(\b(?:bank\s+)?(?:account|acct|a\/c)[\s_]*(?:no\.?|num(?:ber)?|#)\s*[:=#-]?\s*)(\d(?:[\s-]?\d){7,17})(?!\d)/gi;
 
 const PATTERN_RULES: ReadonlyArray<readonly [RedactionKind, RegExp]> = [
   ["EMAIL", EMAIL],
   ["NRIC", NRIC],
   ["PHONE", PHONE],
-  ["ACCT", ACCT],
 ];
 
-// A 12-digit figure is legitimate in financial prose, so ACCT is not a leak signal.
-const LEAK_RULES = PATTERN_RULES.filter(([kind]) => kind !== "ACCT");
+const LABEL_LEAK_RULES: ReadonlyArray<readonly [RedactionKind, RegExp]> = [
+  ["NRIC", /\b(?:nric|ic\s*no|identity\s*card)\s*(?:=|:)\s*(?!\[NRIC_\d+\])\S/i],
+  ["ACCT", /\b(?:bank\s+)?(?:account|acct|a\/c)[\s_]*(?:no\.?|num(?:ber)?|#)\s*(?:=|:)\s*(?!\[ACCT_\d+\])\S/i],
+  ["PHONE", /\b(?:phone|mobile|tel(?:ephone)?)\s*(?:=|:)\s*(?!\[PHONE_\d+\])\S/i],
+  ["ADDR", /\b(?:address|postcode|poskod)\s*(?:=|:)\s*(?!\[ADDR_\d+\])\S/i],
+  ["NAME", /\b(?:name|prepared\s*by|preparer|contact)\s*(?:=|:)\s*(?!\[NAME_\d+\])\S/i],
+];
 
 // CAUTION: the account rule must demand an explicit number-word. Matching bare
 // "account" masks row labels like "Total per audited accounts" — silently turning
 // a verifiable figure into a redacted one.
 const LABEL_RULES: ReadonlyArray<readonly [RedactionKind, RegExp]> = [
   ["NRIC", /\bnric\b|\bic\s*no|identity\s*card/i],
-  ["ACCT", /\baccount[\s_]*(?:no\.?|num(?:ber)?|#)|\bacct[\s_]*(?:no|num|#)?\b|\ba\/c\b/i],
+  ["ACCT", /\b(?:bank\s+)?account[\s_]*(?:no\.?|num(?:ber)?|#)|\bacct[\s_]*(?:no\.?|num(?:ber)?|#)|\ba\/c[\s_]*(?:no\.?|num(?:ber)?|#)/i],
   ["PHONE", /phone|mobile|tel(?:ephone)?\b/i],
   ["ADDR", /address|postcode|poskod/i],
   ["NAME", /\bname\b|prepared\s*by|preparer|contact/i],
@@ -68,6 +72,10 @@ export class Redactor {
     for (const [kind, rule] of PATTERN_RULES) {
       out = out.replace(new RegExp(rule.source, rule.flags), (m) => this.#mint(kind, m));
     }
+    out = out.replace(
+      new RegExp(ACCOUNT_CONTEXT.source, ACCOUNT_CONTEXT.flags),
+      (_match, label: string, value: string) => `${label}${this.#mint("ACCT", value)}`,
+    );
     return out;
   }
 
@@ -94,9 +102,6 @@ export class Redactor {
       const text = (span.text ?? "").trim();
       if (!text) continue;
 
-      // A computed total is never personal data, and masking one breaks verification.
-      if (span.isTotal) continue;
-
       let kind: RedactionKind | null = null;
       for (const [candidate, rule] of PATTERN_RULES) {
         if (new RegExp(rule.source, rule.flags).test(text)) {
@@ -105,10 +110,13 @@ export class Redactor {
         }
       }
 
-      if (!kind) {
+      if (!kind && new RegExp(ACCOUNT_CONTEXT.source, ACCOUNT_CONTEXT.flags).test(text)) {
+        kind = "ACCT";
+      }
+
+      if (!kind && !span.isTotal) {
         const labelled = this.#labelKind(span);
-        // A header like "Account Balance" must never mask money.
-        if (labelled && !(labelled !== "ACCT" && looksNumeric(text))) kind = labelled;
+        if (labelled && !(labelled === "NAME" && looksNumeric(text))) kind = labelled;
       }
 
       if (!kind) continue;
@@ -124,12 +132,20 @@ export class Redactor {
 
 /** Last line of defence, called immediately before bytes leave the process. */
 export function assertClean(payload: string): void {
-  for (const [kind, rule] of LEAK_RULES) {
+  for (const [kind, rule] of PATTERN_RULES) {
     const hit = new RegExp(rule.source, rule.flags).exec(payload);
     if (hit) {
       throw new Error(
         `AIRLOCK: refusing to send. Unmasked ${kind} found at offset ${hit.index}.`,
       );
     }
+  }
+
+  for (const [kind, rule] of LABEL_LEAK_RULES) {
+    const hit = new RegExp(rule.source, rule.flags).exec(payload);
+    if (!hit) continue;
+    throw new Error(
+      `AIRLOCK: refusing to send. Unmasked ${kind} found at offset ${hit.index}.`,
+    );
   }
 }
