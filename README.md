@@ -58,6 +58,11 @@ file is not uploaded or saved. Only the reviewed document text is sent to the
 existing authenticated API when you request a check; Gate 1 still runs before
 Gemini. Importing a document selects live mode instead of a recorded demo plan.
 
+Extraction and preview use PDF.js's matching legacy core and worker builds to
+support browsers missing newer JavaScript helpers, including Safari. A regression
+test extracts the sample with those helpers removed. If AIRLOCK was already open
+before an update, refresh the page before retrying an import.
+
 Limits: 10 MB, 20 PDF pages, and 20,000 extracted characters. Password-protected,
 scanned, unreadable, and oversized documents produce an actionable error. Check
 column order and label/value pairs against the original before continuing:
@@ -213,7 +218,7 @@ cannot forge one.
 | **Firebase Authentication** | Google Sign-In, no passwords handled. The UID is the isolation key for every Firestore path and the identity for the per-user rate limiter. Every API request carries an ID token, verified server-side with `firebase-admin` before any work begins. |
 | **Cloud Firestore** | User-partitioned storage for documents, the Trust Ledger, and the daily quota bucket. Security rules enforce owner-bound reads and deny all client writes to receipts and quota. |
 | **Cloud Run** | Hosts a single container serving both the built React app and the API, so there is one URL and no CORS surface. Scales to zero, capped at 3 instances as an abuse ceiling on a public LLM endpoint. |
-| **Gemini API (AI Studio)** | Powers extraction and reasoning, constrained by `responseSchema` to emit only a flat computation plan. The key is fetched from Secret Manager at runtime and never reaches a client. A model ladder steps down on quota exhaustion. |
+| **Gemini API (AI Studio)** | Plans calculations over redacted document rows, constrained by `responseSchema` to emit only a flat computation plan. PDF text extraction happens locally in the browser. The key is fetched from Secret Manager at runtime and never reaches a client. A model ladder steps down on quota exhaustion. |
 
 ---
 
@@ -425,10 +430,11 @@ proven, not implementation detail.
 | `app` | Anonymous and forged tokens rejected; malformed and oversized bodies refused before quota is charged; injection blocked before the provider; Gate 1 holds on the wire; security headers present |
 | `rules` | User B cannot read or list user A's receipts; nobody can create, rewrite or delete one from a client; the service budget is invisible to clients |
 | `components` | The judge walkthrough selects real scenarios; a refusal renders no figure at all; masked rows show their token and never the original; a stale receipt says so; loading, ledger and signed-out states stay understandable |
+| `document import / PDF evidence` | File validation and review; extracted row coordinates; receipt-to-source links disabled after edits; sample extraction without newer Promise and Map helpers |
 
 ```bash
 cd server && npm test                        # gates, provider, replay, routes, errors
-cd web    && npm test                        # receipt, pipeline and ledger rendering
+cd web    && npm test                        # document import, PDF evidence, receipt and ledger
 JAVA_HOME=$(/usr/libexec/java_home -v 21+) \
   firebase emulators:exec --only firestore 'vitest run'   # firestore.rules
 ```
@@ -454,6 +460,10 @@ server/src/receipts.ts           Trust Ledger writer, Admin SDK only
 server/src/spans.ts              Document text into labelled spans
 web/src/App.tsx                  Auth, API state, receipt subscription
 web/src/components/Workspace.tsx Judge walkthrough and signed-in layout
+web/src/components/DocumentUpload.tsx Local file import and editable review
+web/src/pdfImport.ts             PDF text extraction with page and row coordinates
+web/src/components/PdfPreview.tsx Original PDF rendering and source highlights
+web/public/samples/airlock-demo-payslip.pdf Synthetic judge upload sample
 web/src/components/Airlock.tsx   The two-door pipeline, live per request
 web/src/components/Receipt.tsx   Verified or withheld receipt shell
 web/src/components/ReceiptProof.tsx Working and cited source rows
