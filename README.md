@@ -16,7 +16,21 @@ architecture, not a metaphor. Two deterministic gates flank the model:
 **[Open the live Cloud Run app](https://airlock-x5bsmjxusa-as.a.run.app)** ·
 **[View the public source](https://github.com/exhazordinary/airlock)**
 
-![The AIRLOCK pipeline and a verified receipt](docs/hero.png)
+![The AIRLOCK judge walkthrough, document workspace, and proof receipt](docs/hero.png)
+
+## The two-minute walkthrough
+
+The signed-in workspace opens with four judge-ready checks. Each one loads a real
+synthetic document into the same input, gates, evaluator, receipt, and Firestore path
+used for any other question:
+
+1. **Add up deductions** — trace three payslip rows into one verified total.
+2. **Check a percentage** — follow a two-step calculation with an allowlisted constant.
+3. **Block a hidden instruction** — prove Gate 1 stopped the model call before it began.
+4. **Refuse an unsupported answer** — see AIRLOCK produce no figure when proof is absent.
+
+The walkthrough can be dismissed and reopened. It is navigation through the product,
+not a separate demo surface.
 
 ---
 
@@ -115,20 +129,21 @@ figure. Alongside it the receipt lists the cited source rows, the Gate 1 ledger,
 latency, the model that answered, and the server-written receipt id. The whole thing
 exports as plain text, so the proof survives leaving the page.
 
-### Offline mode
+### Demo-safe mode
 
 Gemini's free tier is metered per project **per model** and has been observed as low as
 20 requests a day. A walkthrough that depends on live quota is a walkthrough that can
 fail in front of an audience.
 
-Offline mode substitutes **only the model**. It replays a plan captured from a real
-Gemini run, addressed by row label rather than span id, and then runs it through Gate 2
+The UI calls this **demo-safe mode**. It substitutes **only the model**, replaying a
+plan captured from a real Gemini run, addressed by row label rather than span id, and
+then runs it through Gate 2
 against the document actually on screen. Both gates still run live: edit a figure and
 the answer is recomputed, not repeated; ask something with no recording and it refuses
 rather than inventing one. The same path is the automatic fallback when the provider is
 exhausted, and any answer produced this way is labelled `recorded plan` on its receipt.
 
-### Trust Ledger
+### Previous checks (Trust Ledger)
 
 Every interaction writes an audit record under the user's UID: redactions applied, the
 exact payload the model saw, which model answered, the verdict, latency, and whether a
@@ -358,7 +373,7 @@ proven, not implementation detail.
 | `gemini` | SDK retries, per-attempt and total latency bounded; provider errors sanitised before they reach a caller |
 | `app` | Anonymous and forged tokens rejected; malformed and oversized bodies refused before quota is charged; injection blocked before the provider; Gate 1 holds on the wire; security headers present |
 | `rules` | User B cannot read or list user A's receipts; nobody can create, rewrite or delete one from a client; the service budget is invisible to clients |
-| `components` | A refusal renders no figure at all; masked rows show their token and never the original; a stale receipt says so; the ledger tells an empty trail apart from a failed read |
+| `components` | The judge walkthrough selects real scenarios; a refusal renders no figure at all; masked rows show their token and never the original; a stale receipt says so; loading, ledger and signed-out states stay understandable |
 
 ```bash
 cd server && npm test                        # gates, provider, replay, routes, errors
@@ -386,10 +401,13 @@ server/src/auth.ts               Firebase ID-token middleware
 server/src/ratelimit.ts          Per-UID and service-wide daily budgets
 server/src/receipts.ts           Trust Ledger writer, Admin SDK only
 server/src/spans.ts              Document text into labelled spans
-web/src/App.tsx                  Layout, scenarios, stale-receipt detection
+web/src/App.tsx                  Auth, API state, receipt subscription
+web/src/components/Workspace.tsx Judge walkthrough and signed-in layout
 web/src/components/Airlock.tsx   The two-door pipeline, live per request
-web/src/components/Receipt.tsx   The working, cited rows, and what the model saw
-web/src/components/Ledger.tsx    Trust Ledger, expandable per receipt
+web/src/components/Receipt.tsx   Verified or withheld receipt shell
+web/src/components/ReceiptProof.tsx Working and cited source rows
+web/src/components/ReceiptDisclosure.tsx Redacted model input disclosure
+web/src/components/Ledger.tsx    Previous checks, expandable per receipt
 firestore.rules                  Owner-bound access, server-only writes
 CUSTOM_INSTRUCTIONS.md           AI Studio Custom Instructions used to build this
 ```
