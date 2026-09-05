@@ -16,6 +16,12 @@ A private assistant for household paperwork — payslips, utility bills, tenancy
 agreements, insurance letters, medical bills. Sign in with Google, add a document,
 ask questions about it.
 
+Document intake supports text-based PDF and UTF-8 TXT files, extracted locally in
+the browser. Users review editable text before replacing the current document.
+Imports select live mode and offer document-relevant question shortcuts. Limits
+are 10 MB, 20 PDF pages, and 20,000 characters; scanned PDFs and photos require
+external text recognition and pasting. Original files never enter the API.
+
 It retains the starter lab's required foundation:
 `auth -> private dashboard -> Gemini question -> save receipt to Firestore -> history`.
 What changed is the trust model: paperwork replaces open-ended journalling, Gemini

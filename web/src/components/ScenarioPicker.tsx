@@ -14,7 +14,7 @@ export default function ScenarioPicker({
       <div className="section-heading">
         <div>
           <h2 id="examples-title">Try an example</h2>
-          <p>Start with a prepared document or paste your own below.</p>
+            <p>Start with an example or upload your own document below.</p>
         </div>
       </div>
       <nav className="scenarios" aria-label="Example documents">

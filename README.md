@@ -34,6 +34,24 @@ not a separate demo surface.
 
 ## Beyond the starter lab
 
+### Bring your own document
+
+Upload a text-based PDF or UTF-8 TXT file, review and correct the extracted text,
+then choose **Use this document**. Suggested questions help you start without
+writing a prompt. You can still paste or edit text directly.
+
+PDF.js extracts text locally in the browser with a bundled worker. The original
+file is not uploaded or saved. Only the reviewed document text is sent to the
+existing authenticated API when you request a check; Gate 1 still runs before
+Gemini. Importing a document selects live mode instead of a recorded demo plan.
+
+Limits: 10 MB, 20 PDF pages, and 20,000 extracted characters. Password-protected,
+scanned, unreadable, and oversized documents produce an actionable error. Check
+column order and label/value pairs against the original before continuing:
+extraction is not proof of transcription accuracy. Photos and OCR are not supported.
+
+### What changed
+
 The codelab's authenticated journal proved the four required services could work
 together. AIRLOCK keeps that foundation, then changes the trust model rather than
 adding another chatbot feature:
