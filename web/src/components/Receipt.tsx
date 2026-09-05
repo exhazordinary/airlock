@@ -22,9 +22,11 @@ const REFUSAL_TITLE: Record<string, string> = {
 export default function Receipt({
   result,
   stale,
+  onLocateSource,
 }: {
   result: AskResponse;
   stale: boolean;
+  onLocateSource?: (id: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const verified = result.verdict === "VERIFIED";
@@ -86,7 +88,7 @@ export default function Receipt({
       </div>
 
       {verified && (
-        <ReceiptProof trace={result.trace ?? []} sources={result.sources ?? []} />
+        <ReceiptProof trace={result.trace ?? []} sources={result.sources ?? []} onLocateSource={stale ? undefined : onLocateSource} />
       )}
       <ReceiptDisclosure
         spans={result.spans}

@@ -36,13 +36,14 @@ const Working = ({ trace }: { trace: TraceStep[] }) => (
   </ol>
 );
 
-const SourceCards = ({ sources }: { sources: Source[] }) => (
+const SourceCards = ({ sources, onLocateSource }: { sources: Source[]; onLocateSource?: (id: string) => void }) => (
   <ul className="sources">
     {sources.map((source) => (
       <li key={source.id}>
         <span className="tag">{source.id}</span>
         <span className="name">{source.label ?? "Unlabelled line"}</span>
         <span className="num">{source.text}</span>
+        {onLocateSource && <button type="button" className="quiet-button source-location" onClick={() => onLocateSource(source.id)}>Show {source.label ?? source.id} in PDF</button>}
       </li>
     ))}
   </ul>
@@ -51,9 +52,11 @@ const SourceCards = ({ sources }: { sources: Source[] }) => (
 export default function ReceiptProof({
   trace,
   sources,
+  onLocateSource,
 }: {
   trace: TraceStep[];
   sources: Source[];
+  onLocateSource?: (id: string) => void;
 }) {
   return (
     <>
@@ -66,7 +69,7 @@ export default function ReceiptProof({
       {sources.length > 0 && (
         <section className="block">
           <h3>Source lines used</h3>
-          <SourceCards sources={sources} />
+          <SourceCards sources={sources} onLocateSource={onLocateSource} />
           {trace.length === 0 && (
             <p className="hint">Read directly from the document. No calculation was needed.</p>
           )}

@@ -1,4 +1,5 @@
 import type { ReactNode, Ref } from "react";
+import { useRef, useState } from "react";
 import { SCENARIOS } from "../demo";
 import type { Scenario } from "../demo";
 import type { AskResponse, ReceiptRow } from "../types";
@@ -10,6 +11,9 @@ import Receipt from "./Receipt";
 import ScenarioPicker from "./ScenarioPicker";
 import DocumentUpload from "./DocumentUpload";
 import { suggestQuestions } from "../documentImport";
+import { sourceRow } from "../pdfSource";
+import type { PdfSource } from "../pdfSource";
+import PdfEvidence from "./PdfEvidence";
 
 export default function Workspace({
   email,
@@ -58,6 +62,17 @@ export default function Workspace({
   onWalkthroughRun: (scenario: Scenario) => void;
   onWalkthroughOpenChange: (open: boolean) => void;
 }) {
+  const [pdf, setPdf] = useState<PdfSource | null>(null);
+  const [selectedId, setSelectedId] = useState<string>();
+  const evidenceRef = useRef<HTMLDivElement>(null);
+  const locateSource = (id: string) => {
+    if (stale || !sourceRow(pdf, document, id)) return;
+    setSelectedId(id);
+    requestAnimationFrame(() => {
+      evidenceRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+      evidenceRef.current?.focus({ preventScroll: true });
+    });
+  };
   const activeKey = SCENARIOS.find(
     (scenario) => scenario.document === document && scenario.question === question,
   )?.key ?? "";
@@ -104,12 +119,21 @@ export default function Workspace({
             </div>
             <span className="privacy-badge">Protected before AI</span>
           </div>
-          <DocumentUpload busy={busy} onAccept={(text) => {
+          <DocumentUpload busy={busy} onAccept={(text, source) => {
+            setPdf(source ?? null);
+            setSelectedId(undefined);
             onDocumentChange(text);
             onQuestionChange(suggestQuestions(text)[0] ?? "");
             onOfflineChange(false);
             onWalkthroughOpenChange(false);
           }} />
+          {pdf && <div className="accepted-pdf" ref={evidenceRef} tabIndex={-1} aria-label="PDF source locations">
+            <div className="section-heading"><h3>Your original PDF</h3>
+              <button type="button" className="quiet-button" onClick={() => setPdf(null)}>Close PDF preview</button></div>
+            {document !== pdf.text && <p className="hint">Document text has changed. These are the original extracted rows; receipt location links are disabled.</p>}
+            <PdfEvidence pdf={pdf} selectedId={selectedId} onSelect={(row) => setSelectedId(row.id)} />
+            <p className="hint">The PDF is kept only for this session. Reopen it after a reload to inspect its locations again.</p>
+          </div>}
           <label className="field-label" htmlFor="document">Document text — paste or edit</label>
           <textarea
             id="document"
@@ -154,7 +178,8 @@ export default function Workspace({
             </div>
           )}
           {busy && <div className="receipt-skeleton" aria-hidden="true"><span /><span /><span /></div>}
-          {result && !busy && <Receipt result={result} stale={stale} />}
+          {result && !busy && <Receipt result={result} stale={stale}
+            onLocateSource={pdf && document === pdf.text && !stale ? locateSource : undefined} />}
         </section>
       </main>
 

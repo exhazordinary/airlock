@@ -1692,3 +1692,22 @@ pre {
 .import-actions, .suggested-questions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .8rem; }
 .suggested-questions .field-label { width: 100%; }
 .suggested-questions button { text-align: left; white-space: normal; }
+.pdf-evidence { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 1rem; margin: 1rem 0; }
+.pdf-preview, .extracted-rows { min-width: 0; }
+.pdf-navigation { display: flex; align-items: center; justify-content: space-between; gap: .4rem; flex-wrap: wrap; font-size: .8rem; }
+.pdf-page { position: relative; background: white; border: 1px solid #b8c6bc; }
+.pdf-page canvas { display: block; width: 100%; height: auto; }
+.pdf-highlight { position: absolute; padding: 0; min-height: 0; border: 1px solid transparent; border-radius: 2px; background: transparent; cursor: pointer; }
+.pdf-highlight:hover, .pdf-highlight:focus-visible { background: #e8bd3755; border-color: #775900; }
+.pdf-highlight.selected { background: #e8bd3766; border: 1px solid #775900; }
+.pdf-selection { font-size: .85rem; overflow-wrap: anywhere; }
+.extracted-rows ol { list-style: none; padding: 0; margin: .5rem 0; max-height: 440px; overflow-y: auto; }
+.extracted-rows button { width: 100%; text-align: left; margin-bottom: .4rem; white-space: normal; overflow-wrap: anywhere; }
+.extracted-rows button small, .extracted-rows button span { display: block; }
+.extracted-rows button[aria-pressed="true"] { background: #fff4c9; border-color: #775900; }
+.accepted-pdf { margin: 1rem 0; scroll-margin-top: 1rem; }
+.sample-download { display: block; margin-bottom: .8rem; font-weight: 600; color: #175e45; }
+.source-location { grid-column: 1 / -1; justify-self: start; }
+@media (max-width: 700px) { .pdf-evidence { grid-template-columns: minmax(0, 1fr); } .extracted-rows ol { max-height: 240px; } }
+.workspace:has(.pdf-evidence) { grid-template-columns: minmax(0, 1fr); }
+.pdf-preview { max-width: 680px; }
