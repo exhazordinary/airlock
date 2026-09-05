@@ -16,6 +16,29 @@ architecture, not a metaphor. Two deterministic gates flank the model:
 **[Open the live Cloud Run app](https://airlock-x5bsmjxusa-as.a.run.app)** ·
 **[View the public source](https://github.com/exhazordinary/airlock)**
 
+![The AIRLOCK pipeline and a verified receipt](docs/hero.png)
+
+---
+
+## The receipt
+
+Ask *"how much was deducted from my gross pay in total?"* and you do not get a number
+you have to trust. You get the working.
+
+![A verified receipt showing the equation, its operands and the cited rows](docs/receipt.png)
+
+Every operand names the document row it came from. Chain two steps and the receipt says
+so, marking which values are earlier results and which are allowlisted constants rather
+than figures from your page.
+
+![A chained calculation using a step result and an allowed constant](docs/chained.png)
+
+Hide a hostile instruction in the document and the inner door never opens. The receipt
+shows every row exactly as the model would have received it — masked values as their
+tokens — and the pipeline records that the model was never called.
+
+![An injection attempt blocked before the model, with the redacted rows listed](docs/injection.png)
+
 ---
 
 ## What makes it different
