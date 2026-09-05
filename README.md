@@ -40,6 +40,19 @@ Upload a text-based PDF or UTF-8 TXT file, review and correct the extracted text
 then choose **Use this document**. Suggested questions help you start without
 writing a prompt. You can still paste or edit text directly.
 
+The original PDF appears beside a list of extracted rows. Select a row to open its
+page and highlight its location, or use **Show … in PDF** on a fresh receipt's source
+cards. Highlights identify approximate extraction locations, not transcription
+accuracy. Editing the document disables receipt location links until it exactly
+matches the extraction again. The PDF and its coordinates remain in browser memory;
+they are not stored with the receipt and disappear on reload or sign-out.
+
+For a complete judge upload test, [download the synthetic sample payslip](web/public/samples/airlock-demo-payslip.pdf),
+upload it, select an extracted row, accept the text, then check the EPF percentage.
+The expected verified result is **11%**. Select **Show EPF Employee in PDF** to trace
+the receipt back to the original page. The app includes the same download link.
+Regenerate the sample with `node scripts/create-demo-pdf.mjs`.
+
 PDF.js extracts text locally in the browser with a bundled worker. The original
 file is not uploaded or saved. Only the reviewed document text is sent to the
 existing authenticated API when you request a check; Gate 1 still runs before

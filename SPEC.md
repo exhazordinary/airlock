@@ -22,6 +22,13 @@ Imports select live mode and offer document-relevant question shortcuts. Limits
 are 10 MB, 20 PDF pages, and 20,000 characters; scanned PDFs and photos require
 external text recognition and pasting. Original files never enter the API.
 
+Each PDF row retains its page and approximate text boxes in browser memory. The
+local canvas preview and extracted-row list navigate together. Fresh receipt source
+cards can jump to matching rows only while the current text exactly matches the
+extraction. Edited text or stale receipts have no location links. Original PDFs and
+coordinates are not persisted; historical receipts retain textual evidence only.
+A downloadable synthetic payslip lets judges exercise the same upload flow.
+
 It retains the starter lab's required foundation:
 `auth -> private dashboard -> Gemini question -> save receipt to Firestore -> history`.
 What changed is the trust model: paperwork replaces open-ended journalling, Gemini
