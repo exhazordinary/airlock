@@ -11,6 +11,7 @@ import { buildPrompt, requestPlan, looksLikeInjection } from "./gemini.js";
 import { replayPlan } from "./replay.js";
 import { writeReceipt } from "./receipts.js";
 import { securityHeaders } from "./security.js";
+import { errorHandler, route } from "./errors.js";
 import { validateAsk } from "./validate.js";
 
 type PipelineCode = "INJECTION_BLOCKED" | "PROVIDER_UNAVAILABLE" | "NO_RECORDING";
@@ -48,7 +49,7 @@ export function createApp() {
     res.json({ ok: true, service: "airlock", ts: new Date().toISOString() });
   });
 
-  app.post("/api/ask", requireAuth, async (req, res) => {
+  app.post("/api/ask", requireAuth, route(async (req, res) => {
     const uid = (req as AuthedRequest).uid!;
     const started = Date.now();
 
@@ -159,12 +160,13 @@ export function createApp() {
       latencyMs: Date.now() - started,
       quota: { used: quota.used, limit: quota.limit },
     });
-  });
+  }));
 
   app.use("/api", (_req, res) => res.status(404).json({ error: "Not found." }));
 
   app.use(express.static(publicDir));
   app.get("*", (_req, res) => res.sendFile(path.join(publicDir, "index.html")));
+  app.use(errorHandler);
 
   return app;
 }
