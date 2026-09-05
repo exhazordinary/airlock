@@ -1,7 +1,10 @@
 import type { Request, Response, NextFunction } from "express";
 
 const GOOGLE_APIS = "https://*.googleapis.com";
-const FIREBASE_AUTH = "https://*.firebaseapp.com https://accounts.google.com";
+// Firebase Auth loads the gapi helper from apis.google.com and hosts its sign-in
+// handler on the project's firebaseapp.com domain. Omitting either breaks sign-in.
+const FIREBASE_AUTH =
+  "https://apis.google.com https://*.firebaseapp.com https://accounts.google.com";
 
 // same-origin-allow-popups, not same-origin: the Google sign-in popup must still be
 // able to talk back to the opener.
@@ -20,7 +23,7 @@ const POLICY: ReadonlyArray<readonly [string, string]> = [
       "object-src 'none'",
       "form-action 'self'",
       "frame-ancestors 'none'",
-      "img-src 'self' data:",
+      "img-src 'self' data: https://*.googleusercontent.com",
       "style-src 'self' 'unsafe-inline'",
       `script-src 'self' ${FIREBASE_AUTH}`,
       `connect-src 'self' ${GOOGLE_APIS} https://*.firebaseio.com wss://*.firebaseio.com`,
