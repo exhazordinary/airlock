@@ -9,6 +9,7 @@ export default function QuestionBar({
   onQuestionChange,
   onOfflineChange,
   onAsk,
+  suggestions = [],
 }: {
   question: string;
   offline: boolean;
@@ -17,6 +18,7 @@ export default function QuestionBar({
   onQuestionChange: (question: string) => void;
   onOfflineChange: (offline: boolean) => void;
   onAsk: () => void;
+  suggestions?: string[];
 }) {
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -25,6 +27,10 @@ export default function QuestionBar({
 
   return (
     <form className="question-area" onSubmit={submit}>
+      {suggestions.length > 0 && <div className="suggested-questions" aria-label="Suggested questions">
+        <span className="field-label">Choose a question, or write your own</span>
+        {suggestions.map((suggestion) => <button key={suggestion} type="button" className="quiet-button" disabled={busy} onClick={() => onQuestionChange(suggestion)}>{suggestion}</button>)}
+      </div>}
       <label className="field-label" htmlFor="question">
         What would you like to check?
       </label>

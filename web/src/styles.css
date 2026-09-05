@@ -1684,3 +1684,11 @@ pre {
     transition-duration: 0.01ms !important;
   }
 }
+.document-upload { padding: 1.2rem; margin: 1rem 0; border: 1px dashed var(--muted, #a9b8ac); border-radius: 12px; background: #f4f7f0; }
+.document-upload p { margin: .6rem 0; }
+.document-upload input[type="file"] { max-width: 100%; padding: .6rem 0; }
+.document-upload input::file-selector-button { padding: .7rem 1rem; margin-right: .6rem; border-radius: 8px; border: 1px solid #829487; background: white; cursor: pointer; }
+.import-review { margin-top: 1rem; }
+.import-actions, .suggested-questions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .8rem; }
+.suggested-questions .field-label { width: 100%; }
+.suggested-questions button { text-align: left; white-space: normal; }

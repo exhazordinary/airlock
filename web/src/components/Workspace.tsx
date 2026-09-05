@@ -8,6 +8,8 @@ import Ledger from "./Ledger";
 import QuestionBar from "./QuestionBar";
 import Receipt from "./Receipt";
 import ScenarioPicker from "./ScenarioPicker";
+import DocumentUpload from "./DocumentUpload";
+import { suggestQuestions } from "../documentImport";
 
 export default function Workspace({
   email,
@@ -98,10 +100,17 @@ export default function Workspace({
           <div className="section-heading">
             <div>
               <h2 id="document-title">Your document</h2>
-              <p>Paste a payslip, bill, or invoice. Synthetic examples are ready above.</p>
+              <p>Upload a payslip, bill, or invoice, or try an example above.</p>
             </div>
             <span className="privacy-badge">Protected before AI</span>
           </div>
+          <DocumentUpload busy={busy} onAccept={(text) => {
+            onDocumentChange(text);
+            onQuestionChange(suggestQuestions(text)[0] ?? "");
+            onOfflineChange(false);
+            onWalkthroughOpenChange(false);
+          }} />
+          <label className="field-label" htmlFor="document">Document text — paste or edit</label>
           <textarea
             id="document"
             rows={17}
@@ -115,6 +124,7 @@ export default function Workspace({
             with safe tokens on the server before a model call can exist.
           </p>
           <QuestionBar
+            suggestions={suggestQuestions(document)}
             question={question}
             offline={offline}
             busy={busy}
