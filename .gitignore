@@ -38,3 +38,4 @@ server/src/fixture-docs.ts
 
 # local rules test harness
 rules-tests/
+web/src/test-setup.ts
