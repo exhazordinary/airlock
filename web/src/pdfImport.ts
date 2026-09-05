@@ -1,6 +1,6 @@
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
 import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
-import type { TextItem } from "pdfjs-dist/types/src/display/api";
+import type { TextContent, TextItem } from "pdfjs-dist/types/src/display/api";
 import type { PdfBox, PdfRow, PdfSource } from "./pdfSource";
 import { normalizeDocumentText } from "./documentImport";
 
@@ -16,7 +16,17 @@ export const extractPdfSource = async (data: ArrayBuffer): Promise<PdfSource> =>
     const rows: PdfRow[] = [];
     for (let number = 1; number <= pdf.numPages; number++) {
       const page = await pdf.getPage(number);
-      const content = await page.getTextContent();
+      const reader = page.streamTextContent().getReader();
+      const items: TextContent["items"] = [];
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          items.push(...value.items);
+        }
+      } finally {
+        reader.releaseLock();
+      }
       const viewport = page.getViewport({ scale: 1 });
       let text = "";
       let line = "";
@@ -27,7 +37,7 @@ export const extractPdfSource = async (data: ArrayBuffer): Promise<PdfSource> =>
         boxes = [];
       };
       let previous: TextItem | undefined;
-      for (const item of content.items) {
+      for (const item of items) {
         if (!("str" in item)) continue;
         if (previous && !text.endsWith("\n")) {
           const newLine = Math.abs(item.transform[5] - previous.transform[5]) > Math.max(2, previous.height / 2);

@@ -59,8 +59,9 @@ existing authenticated API when you request a check; Gate 1 still runs before
 Gemini. Importing a document selects live mode instead of a recorded demo plan.
 
 Extraction and preview use PDF.js's matching legacy core and worker builds to
-support browsers missing newer JavaScript helpers, including Safari. A regression
-test extracts the sample with those helpers removed. If AIRLOCK was already open
+support browsers missing newer JavaScript helpers, including Safari. Text extraction
+uses an explicit stream reader because Safari lacks stream async iteration. A regression
+test extracts the sample with those APIs removed. If AIRLOCK was already open
 before an update, refresh the page before retrying an import.
 
 Limits: 10 MB, 20 PDF pages, and 20,000 extracted characters. Password-protected,
@@ -430,7 +431,7 @@ proven, not implementation detail.
 | `app` | Anonymous and forged tokens rejected; malformed and oversized bodies refused before quota is charged; injection blocked before the provider; Gate 1 holds on the wire; security headers present |
 | `rules` | User B cannot read or list user A's receipts; nobody can create, rewrite or delete one from a client; the service budget is invisible to clients |
 | `components` | The judge walkthrough selects real scenarios; a refusal renders no figure at all; masked rows show their token and never the original; a stale receipt says so; loading, ledger and signed-out states stay understandable |
-| `document import / PDF evidence` | File validation and review; extracted row coordinates; receipt-to-source links disabled after edits; sample extraction without newer Promise and Map helpers |
+| `document import / PDF evidence` | File validation and review; extracted row coordinates; receipt-to-source links disabled after edits; sample extraction without newer Promise/Map helpers or stream async iteration |
 
 ```bash
 cd server && npm test                        # gates, provider, replay, routes, errors
