@@ -66,7 +66,8 @@ immediately before bytes leave the process. If Gate 1 did its job it never fires
 which is exactly why it is cheap to keep — and it makes the guarantee structural
 rather than a prompt instruction.
 
-**UI:** a per-message toggle, *"what you gave"* against *"what the model saw"*.
+**UI:** every receipt lists each row exactly as the model received it, masked values
+shown as their token and cited rows highlighted, over the exact bytes sent upstream.
 
 ## 4. Gate 2 — Computation (outbound)
 
@@ -85,10 +86,27 @@ constant enum for unit conversion and counting. "The model cannot state a number
 therefore a property of the grammar it generates within, not a check applied after the
 fact. A deterministic evaluator resolves ordered steps against spans extracted from the source.
 
-- resolves with complete citations -> green **VERIFIED**, cited span IDs shown
-- unknown span, malformed plan, or unsafe output -> amber **CANNOT VERIFY** with the reason
+- resolves with complete citations -> green **VERIFIED**
+- unknown span, malformed plan, or unsafe output -> amber **CANNOT VERIFY**, with a
+  reason and a machine-readable code the UI can title
 
 No code is generated and none is executed.
+
+### 4a. The receipt
+
+A verdict alone is an assertion, so Gate 2 returns its working: each step as a rendered
+equation whose operands carry the row label they came from, a marker distinguishing an
+allowlisted constant from a document figure, and the cited source rows beneath. The UI
+draws it as a tally and exports it as plain text.
+
+### 4b. Offline mode
+
+Free-tier quota can end a demo. Offline mode substitutes **only the model**, replaying a
+plan captured from a real Gemini run and addressed by row label rather than span id.
+Both gates still run live against the document on screen: an edited figure is recomputed
+rather than repeated, and a question with no recording is refused rather than invented.
+It is also the automatic fallback on provider failure, and every answer it produces is
+labelled `recorded plan` on its receipt.
 
 ## 5. Trust Ledger
 
@@ -110,13 +128,16 @@ one deploy.
 Browser --Firebase Auth (Google Sign-In)--> ID token
    |
    +--> Cloud Run  [asia-southeast1, min=0, max=3]
+          |- security headers        -> CSP, COOP, nosniff, frame deny
           |- verify ID token on EVERY request (firebase-admin)
-          |- per-UID rate limit (Firestore token bucket)
-          |- GATE 1: REDACTION      -> PII masked to stable tokens
-          |- assertClean(payload)   -> throws if anything unmasked would leave
+          |- validate body           -> typed, with hard size ceilings
+          |- rate limit              -> per-UID and service-wide, one transaction
+          |- GATE 1: REDACTION       -> PII masked to stable tokens
+          |- assertClean(payload)    -> throws if anything unmasked would leave
           |- Gemini (key via Secret Manager, never leaves the backend)
-          |- GATE 2: COMPUTATION    -> tree evaluated deterministically
-          +- write receipt          -> users/{uid}/receipts/{id}
+          |     fallback             -> recorded plan, model only
+          |- GATE 2: COMPUTATION     -> steps evaluated deterministically, with trace
+          +- write receipt           -> users/{uid}/receipts/{id}
 ```
 
 Vite + React + TypeScript · Express + TypeScript · firebase-admin ·
@@ -128,6 +149,7 @@ Vite + React + TypeScript · Express + TypeScript · firebase-admin ·
 users/{uid}/documents/{docId}   owner-bound read/write
 users/{uid}/receipts/{id}       owner-bound READ, client write DENIED
 users/{uid}/quota/current       client read-only, server-written
+system/quota                    server-only, invisible to clients
 ```
 
 ---
@@ -152,8 +174,10 @@ Gemini free-tier quota is metered per project **per model**, observed as low as 
 requests per day. A second model is a second budget, so the provider ladders
 `gemini-3.8-flash -> gemini-3.7-flash -> gemini-3.6-flash -> gemini-3.5-flash ->
 gemini-3-flash-preview -> gemini-3.1-flash-lite`
-and steps down on exhaustion. Each attempt and the full ladder have server-side timeouts;
-the UI fails closed with CANNOT VERIFY when live quota is unavailable.
+and steps down on exhaustion. Each attempt and the full ladder have server-side timeouts.
+When the whole ladder is exhausted the request falls back to a recorded plan, which still
+passes through Gate 2 live; if no recording matches, it fails closed with CANNOT VERIFY
+rather than producing a figure.
 
 ## 9. Deliverables
 
