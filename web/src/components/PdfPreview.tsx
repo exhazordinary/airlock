@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
+import { getDocument, GlobalWorkerOptions } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { RenderTask } from "pdfjs-dist/types/src/display/api";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import type { PdfRow, PdfSource } from "../pdfSource";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
