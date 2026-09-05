@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { AskResponse } from "../types";
 import { formatValue } from "../format";
 
@@ -5,83 +6,101 @@ type Tone = "idle" | "busy" | "pass" | "warn" | "block";
 
 interface Stage {
   key: string;
-  kicker: string;
+  label: string;
   title: string;
   detail: string;
   tone: Tone;
-  door?: "open" | "shut";
 }
 
-const rows = (r: AskResponse) => r.spans.length;
-const masked = (r: AskResponse) =>
-  Object.values(r.redactions).reduce((a, b) => a + b, 0);
+const masked = (result: AskResponse): number =>
+  Object.values(result.redactions).reduce((total, count) => total + count, 0);
 
-function stages(result: AskResponse | null, busy: boolean): Stage[] {
-  if (busy || !result) {
-    const tone: Tone = busy ? "busy" : "idle";
-    return [
-      { key: "in", kicker: "Input", title: "Your document", detail: busy ? "reading…" : "not yet read", tone },
-      { key: "g1", kicker: "Outer door", title: "Gate 1 · Redact", detail: busy ? "masking…" : "idle", tone, door: busy ? "shut" : "open" },
-      { key: "ai", kicker: "Chamber", title: "Model", detail: busy ? "thinking…" : "idle", tone },
-      { key: "g2", kicker: "Inner door", title: "Gate 2 · Verify", detail: busy ? "checking…" : "idle", tone, door: "shut" },
-      { key: "out", kicker: "Output", title: "Answer", detail: busy ? "held" : "none yet", tone },
-    ];
-  }
+const idleStages = (busy: boolean): Stage[] => [
+  {
+    key: "privacy",
+    label: "Gate 1",
+    title: "Personal details protected",
+    detail: busy ? "Masking sensitive values now" : "Ready for your document",
+    tone: busy ? "busy" : "idle",
+  },
+  {
+    key: "plan",
+    label: "Gemini",
+    title: "AI creates a plan",
+    detail: busy ? "Waiting behind the privacy gate" : "No document sent",
+    tone: "idle",
+  },
+  {
+    key: "proof",
+    label: "Gate 2",
+    title: "Answer checked against your document",
+    detail: busy ? "Waiting for a safe plan" : "No plan checked",
+    tone: "idle",
+  },
+  {
+    key: "answer",
+    label: "Receipt",
+    title: busy ? "Answer held until verified" : "Your proof appears here",
+    detail: busy ? "Nothing is released early" : "none yet",
+    tone: "idle",
+  },
+];
 
+const resultStages = (result: AskResponse): Stage[] => {
   const blocked = result.injectionFlagged;
   const verified = result.verdict === "VERIFIED";
   const noRecording = result.code === "NO_RECORDING";
+  const maskedTotal = masked(result);
 
   return [
     {
-      key: "in",
-      kicker: "Input",
-      title: "Your document",
-      detail: `${rows(result)} rows read`,
+      key: "privacy",
+      label: "Gate 1",
+      title: "Personal details protected",
+      detail: maskedTotal === 0 ? "Nothing sensitive found" : `${maskedTotal} values masked before AI`,
       tone: "pass",
     },
     {
-      key: "g1",
-      kicker: "Outer door",
-      title: "Gate 1 · Redact",
-      detail: masked(result) === 0 ? "nothing sensitive found" : `${masked(result)} values masked`,
-      tone: "pass",
-      door: "shut",
-    },
-    {
-      key: "ai",
-      kicker: "Chamber",
-      title: "Model",
+      key: "plan",
+      label: "Gemini",
+      title: "AI creates a plan",
       detail: blocked
         ? "never opened"
         : result.replayed
-          ? "recorded plan replayed"
+          ? "Recorded plan used"
           : noRecording
-            ? "no recording matched"
-            : (result.model ?? "unavailable"),
+            ? "No matching plan available"
+            : (result.model ?? "Provider unavailable"),
       tone: blocked ? "block" : result.replayed || noRecording ? "warn" : "pass",
     },
     {
-      key: "g2",
-      kicker: "Inner door",
-      title: "Gate 2 · Verify",
+      key: "proof",
+      label: "Gate 2",
+      title: "Answer checked against your document",
       detail: verified
-        ? `${result.sources?.length ?? 0} sources recomputed`
+        ? `${result.sources?.length ?? 0} source lines recomputed`
         : blocked
-          ? "input refused"
-          : "no proof accepted",
+          ? "Unsafe input stopped"
+          : "No proof accepted",
       tone: verified ? "pass" : blocked ? "block" : "warn",
-      door: verified ? "open" : "shut",
     },
     {
-      key: "out",
-      kicker: "Output",
+      key: "answer",
+      label: "Receipt",
       title: verified ? "Answer released" : "Answer withheld",
-      detail: verified ? formatValue(result.value) : "no figure produced",
+      detail: verified ? formatValue(result.value) : "No figure produced",
       tone: verified ? "pass" : blocked ? "block" : "warn",
     },
   ];
-}
+};
+
+const icon = (tone: Tone): string => {
+  if (tone === "pass") return "✓";
+  if (tone === "block") return "!";
+  if (tone === "warn") return "–";
+  if (tone === "busy") return "•";
+  return "○";
+};
 
 export default function Airlock({
   result,
@@ -90,26 +109,43 @@ export default function Airlock({
   result: AskResponse | null;
   busy: boolean;
 }) {
-  const list = stages(result, busy);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!busy) {
+      setElapsed(0);
+      return;
+    }
+
+    const started = Date.now();
+    const timer = window.setInterval(() => setElapsed(Date.now() - started), 100);
+    return () => window.clearInterval(timer);
+  }, [busy]);
+
+  const stages = result && !busy ? resultStages(result) : idleStages(busy);
 
   return (
-    <section className="airlock" aria-label="Request pipeline">
+    <section className={`airlock${busy ? " is-busy" : ""}`} aria-labelledby="airlock-title">
+      <header className="airlock-head">
+        <div>
+          <h3 id="airlock-title">{busy ? "Checking securely" : "How this check is protected"}</h3>
+          <p>Both safety doors are never open at the same time.</p>
+        </div>
+        {busy && <output className="elapsed">Elapsed {(elapsed / 1000).toFixed(1)}s</output>}
+      </header>
+
       <ol className="chain">
-        {list.map((s, i) => (
-          <li key={s.key} className={`stage tone-${s.tone}`}>
-            {i > 0 && <span className="link" aria-hidden="true" />}
-            <div className={`node${s.door ? ` door door-${s.door}` : ""}`}>
-              <span className="kicker">{s.kicker}</span>
-              <strong>{s.title}</strong>
-              <span className="detail">{s.detail}</span>
-            </div>
+        {stages.map((stage) => (
+          <li key={stage.key} className={`stage tone-${stage.tone}`}>
+            <span className="stage-status" aria-hidden="true">{icon(stage.tone)}</span>
+            <span className="stage-copy">
+              <span className="kicker">{stage.label}</span>
+              <strong>{stage.title}</strong>
+              <span className="detail">{stage.detail}</span>
+            </span>
           </li>
         ))}
       </ol>
-      <p className="airlock-note">
-        Both doors are never open at once. Gate 1 is a code path that runs before any
-        model call exists; Gate 2 recomputes every figure from your own document.
-      </p>
     </section>
   );
 }

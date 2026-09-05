@@ -61,15 +61,21 @@ export default function Ledger({
 }) {
   return (
     <section className="panel ledger">
-      <h2>Trust ledger — your receipts</h2>
+      <div className="section-heading">
+        <div>
+          <h2>Previous checks</h2>
+          <p>Your private, server-written receipt history.</p>
+        </div>
+        <span className="server-badge">Cannot be forged in the browser</span>
+      </div>
 
       {error ? (
         <p className="err" role="alert">
-          Could not load your receipts: {error}
+          Previous checks could not load. Refresh the page to try again. {error}
         </p>
       ) : rows.length === 0 ? (
         <p className="muted">
-          No receipts yet. Every answer you ask for is recorded here, server-side.
+          No receipts yet. Your first completed check will appear here automatically.
         </p>
       ) : (
         <ul className="ledger-list">
@@ -78,9 +84,8 @@ export default function Ledger({
       )}
 
       <p className="muted foot-note">
-        Receipts are written by the server with the Admin SDK. Firestore rules deny every
-        client write, so you can read your own audit trail and nobody — including you —
-        can forge one.
+        Only AIRLOCK's server can write these receipts. You can review your own history,
+        but nobody can edit it from this browser.
       </p>
     </section>
   );
