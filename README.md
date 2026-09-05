@@ -208,6 +208,18 @@ gcloud services api-keys describe <KEY_UID> --project=<PROJECT> --format='yaml(r
 Deleting or rotating the key achieves nothing, because the replacement is equally
 public. Restricting it is the control that actually matters.
 
+### Dependency advisories
+
+`npm audit --omit=dev` reports two moderate transitive advisories. Both were triaged
+rather than silenced, and neither is reachable here:
+
+| Package | Via | Why it does not apply |
+|---|---|---|
+| `qs` | `express@4.22.2` | The advisories concern query-string parsing. AIRLOCK exposes no query parameters — `/api/ask` and `/api/health` are the whole API, and the former reads a JSON body bounded at 256 kB. `6.15.3` is already the newest `qs` that Express 4 ships. |
+| `uuid` | `firebase-admin@13` | Affects v3/v5/v6 only when a caller supplies its own `buf`. Nothing on this path does. The advised "fix" is `firebase-admin@10.3.0`, a major downgrade that would cost more than it buys. |
+
+The web bundle reports zero vulnerabilities.
+
 ---
 
 ## Security rules
