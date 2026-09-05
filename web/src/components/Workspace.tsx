@@ -30,6 +30,7 @@ export default function Workspace({
   onAsk,
   onSignOut,
   onScenarioSelect,
+  onWalkthroughRun,
   onWalkthroughOpenChange,
 }: {
   email: string;
@@ -52,6 +53,7 @@ export default function Workspace({
   onAsk: () => void;
   onSignOut: () => void;
   onScenarioSelect: (scenario: Scenario) => void;
+  onWalkthroughRun: (scenario: Scenario) => void;
   onWalkthroughOpenChange: (open: boolean) => void;
 }) {
   const activeKey = SCENARIOS.find(
@@ -78,7 +80,9 @@ export default function Workspace({
           activeKey={activeKey}
           result={result}
           stale={stale}
+          busy={busy}
           onSelect={onScenarioSelect}
+          onRun={onWalkthroughRun}
           onDismiss={() => onWalkthroughOpenChange(false)}
         />
       ) : (

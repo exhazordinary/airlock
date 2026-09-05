@@ -70,14 +70,18 @@ export default function App() {
     setQuestion(scenario.question);
   };
 
-  const ask = async () => {
+  const askFor = async (nextDocument: string, nextQuestion: string, nextMode: string) => {
     if (busy) return;
     setBusy(true);
     setError("");
-    const requestFingerprint = fingerprint(document, question, mode);
+    const requestFingerprint = fingerprint(nextDocument, nextQuestion, nextMode);
 
     try {
-      const response = await api<AskResponse>("/api/ask", { document, question, mode });
+      const response = await api<AskResponse>("/api/ask", {
+        document: nextDocument,
+        question: nextQuestion,
+        mode: nextMode,
+      });
       setResult(response);
       setAskedFor(requestFingerprint);
       requestAnimationFrame(() => resultRef.current?.focus());
@@ -86,6 +90,13 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const runWalkthrough = (scenario: Scenario) => {
+    setDocument(scenario.document);
+    setQuestion(scenario.question);
+    setOffline(true);
+    void askFor(scenario.document, scenario.question, "replay");
   };
 
   if (!ready) {
@@ -119,9 +130,10 @@ export default function App() {
       onDocumentChange={setDocument}
       onQuestionChange={setQuestion}
       onOfflineChange={setOffline}
-      onAsk={() => void ask()}
+      onAsk={() => void askFor(document, question, mode)}
       onSignOut={() => void signOut()}
       onScenarioSelect={chooseScenario}
+      onWalkthroughRun={runWalkthrough}
       onWalkthroughOpenChange={setWalkthroughOpen}
     />
   );

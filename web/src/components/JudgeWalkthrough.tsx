@@ -39,16 +39,23 @@ export default function JudgeWalkthrough({
   activeKey,
   result,
   stale,
+  busy,
   onSelect,
+  onRun,
   onDismiss,
 }: {
   activeKey: string;
   result: AskResponse | null;
   stale: boolean;
+  busy: boolean;
   onSelect: (scenario: Scenario) => void;
+  onRun: (scenario: Scenario) => void;
   onDismiss: () => void;
 }) {
-  const activeIndex = Math.max(0, STEPS.findIndex((step) => step.key === activeKey));
+  const matchedIndex = STEPS.findIndex((step) => step.key === activeKey);
+  const activeIndex = Math.max(0, matchedIndex);
+  const activeStep = STEPS[activeIndex]!;
+  const activeScenario = findScenario(activeStep.key)!;
 
   return (
     <section className="walkthrough" aria-labelledby="walkthrough-title">
@@ -69,8 +76,14 @@ export default function JudgeWalkthrough({
       </header>
 
       <div className="walkthrough-progress">
-        <span>Step {activeIndex + 1} of {STEPS.length}</span>
-        <span className="walkthrough-outcome">{outcome(result, stale)}</span>
+        <span>
+          {matchedIndex < 0
+            ? "Choose a walkthrough step"
+            : `Step ${activeIndex + 1} of ${STEPS.length}`}
+        </span>
+        <span className="walkthrough-outcome">
+          {matchedIndex < 0 ? "Everyday check" : outcome(result, stale)}
+        </span>
       </div>
 
       <ol className="walkthrough-steps">
@@ -95,6 +108,22 @@ export default function JudgeWalkthrough({
           );
         })}
       </ol>
+
+      <div className="walkthrough-action">
+        <button
+          className="primary"
+          type="button"
+          disabled={busy}
+          onClick={() => onRun(activeScenario)}
+        >
+          {busy
+            ? `Checking step ${activeIndex + 1}…`
+            : matchedIndex < 0
+              ? "Start the walkthrough safely"
+              : `Run step ${activeIndex + 1} safely`}
+        </button>
+        <small>Demo-safe mode keeps the walkthrough reliable. Both gates still run live.</small>
+      </div>
     </section>
   );
 }

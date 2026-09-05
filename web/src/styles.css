@@ -348,6 +348,24 @@ button:disabled {
   line-height: 1.4;
 }
 
+.walkthrough-action {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in oklch, var(--teal) 22%, var(--line));
+}
+
+.walkthrough-action .primary {
+  flex: 0 0 auto;
+}
+
+.walkthrough-action small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .reopen-tour {
   display: block;
   margin: 0 0 24px auto;
@@ -1568,6 +1586,11 @@ pre {
 
   .walkthrough-step {
     min-height: auto;
+  }
+
+  .walkthrough-action {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .prompt-bar {
