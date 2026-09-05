@@ -46,7 +46,8 @@ immediately before bytes leave the process. If Gate 1 did its job it never fires
 is exactly why it is cheap to keep — and it makes the guarantee structural rather than a
 prompt instruction.
 
-The UI exposes this directly: **"show what the model saw"** renders the exact payload
+The UI exposes this directly. Every receipt lists **each row exactly as the model
+received it**, with masked values shown as their token, and can print the exact bytes
 sent upstream.
 
 ### Gate 2 — Computation (outbound)
@@ -66,11 +67,43 @@ constant enum for unit conversion and counting. "The model cannot state a number
 therefore a property of the grammar it generates *within*, not a check applied after the
 fact. A deterministic evaluator resolves the ordered steps against the document's spans:
 
-- resolves, and every span it used was cited → green **VERIFIED**, with cited span IDs shown
+- resolves, and every span it used was cited → green **VERIFIED**
 - unknown span, redacted span, division by zero, wrong arity, excessive depth, or a span
-  used but not cited → amber **CANNOT VERIFY**, with the reason
+  used but not cited → amber **CANNOT VERIFY**, with a reason and a machine-readable code
 
 No code is generated and none is executed, so there is no sandbox to escape.
+
+### The receipt
+
+A verdict alone is an assertion. Gate 2 therefore returns its **working**, and the UI
+renders it as a tally you can audit line by line:
+
+```
+t1  sum
+    EPF Employee        624.80
+  + SOCSO                24.75
+  + PCB Tax             312.00
+  = t1                  961.55
+```
+
+Every operand carries the row label it came from, the ids of any earlier steps it
+reuses, and a marker when it is one of the allowlisted constants rather than a document
+figure. Alongside it the receipt lists the cited source rows, the Gate 1 ledger, the
+latency, the model that answered, and the server-written receipt id. The whole thing
+exports as plain text, so the proof survives leaving the page.
+
+### Offline mode
+
+Gemini's free tier is metered per project **per model** and has been observed as low as
+20 requests a day. A walkthrough that depends on live quota is a walkthrough that can
+fail in front of an audience.
+
+Offline mode substitutes **only the model**. It replays a plan captured from a real
+Gemini run, addressed by row label rather than span id, and then runs it through Gate 2
+against the document actually on screen. Both gates still run live: edit a figure and
+the answer is recomputed, not repeated; ask something with no recording and it refuses
+rather than inventing one. The same path is the automatic fallback when the provider is
+exhausted, and any answer produced this way is labelled `recorded plan` on its receipt.
 
 ### Trust Ledger
 
@@ -102,13 +135,15 @@ Mapped to the five zones from the challenge's Custom Instructions framework.
 | Zone | Threat | Mitigation |
 |---|---|---|
 | Input Surfaces | Pasted document carries NRIC, bank account, phone | Gate 1 masks before any egress; `assertClean` throws on leak |
-| Input Surfaces | Prompt injection hidden in the document | Output grammar cannot express a number; attempt is flagged and logged |
+| Input Surfaces | Prompt injection hidden in the document | Detected before the provider call; output grammar cannot express a number either way |
+| Input Surfaces | Injected script or clickjacked frame | CSP, `X-Frame-Options`, `nosniff`, and a COOP that still permits the sign-in popup |
 | Planning & Reasoning | Model asserts a plausible but wrong figure | Gate 2 refuses anything it cannot resolve from cited spans |
 | Tool Execution | Model-authored code escapes a sandbox | No code is generated or executed at all |
 | Memory & State | User A reads user B's history | Owner-bound rules; UID from a verified ID token, never from the request body |
 | Memory & State | User forges a clean audit record | Receipts are `allow write: if false`; server-only via Admin SDK |
 | Inter-System Communication | API key leaks to the browser | Key lives in Secret Manager, read backend-only; never serialised to a response |
-| Inter-System Communication | Public endpoint drains the quota | Per-UID daily bucket plus `--max-instances=3` |
+| Inter-System Communication | Public endpoint drains the quota | Per-UID daily bucket and a service-wide daily budget, decided in one transaction, plus `--max-instances=3` |
+| Inter-System Communication | Oversized or mistyped body burns compute | Typed validation at the edge with hard character ceilings, before the quota is charged |
 
 ### On the Firebase web API key
 
@@ -260,6 +295,7 @@ frontend on someone else's domain from harvesting sign-ins against this project.
 | `GEMINI_ATTEMPT_TIMEOUT_MS` | `12000` | Maximum time for one model attempt |
 | `GEMINI_TOTAL_TIMEOUT_MS` | `45000` | Maximum time across the full ladder |
 | `DAILY_LIMIT` | `25` | Questions per user per day |
+| `GLOBAL_DAILY_LIMIT` | `300` | Questions across the whole service per day. Checked in the same transaction as the per-user bucket, so a rejected request never charges the caller. |
 | `GEMINI_API_KEY` | unset | Local development only. In production the key is read from Secret Manager. |
 
 ### Local development
@@ -271,19 +307,51 @@ cd web    && npm install && npm run dev     # :5173, proxies /api
 
 ---
 
+## Testing
+
+Both gates are built test-first. The suites are the argument that the guarantees are
+structural rather than aspirational, so they assert behaviour a reader would want
+proven, not implementation detail.
+
+| Suite | Covers |
+|---|---|
+| `gates/redact` | NRIC, phone, account, email, address and name masked in one payload; totals never masked; `assertClean` throws when redaction is deliberately bypassed |
+| `gates/compute` | The schema exposes no numeric type; bare numbers and unlisted constants rejected; forward references, duplicate step ids and wrong arity refused |
+| `gates/trace` | Each step renders as an equation with labelled operands; constants and step reuse are marked as such; every refusal carries its code |
+| `spans` | Ambiguous numeric spans are rejected rather than guessed |
+| `replay` | A recording verifies through Gate 2 against the live document, recomputes an edited figure, and returns nothing when its rows are absent |
+| `gemini` | SDK retries, per-attempt and total latency bounded; provider errors sanitised before they reach a caller |
+| `app` | Anonymous and forged tokens rejected; malformed and oversized bodies refused before quota is charged; injection blocked before the provider; Gate 1 holds on the wire; security headers present |
+| `rules` | User B cannot read or list user A's receipts; nobody can create, rewrite or delete one from a client; the service budget is invisible to clients |
+
+```bash
+cd server && npm test                        # gates, provider, replay, routes
+JAVA_HOME=$(/usr/libexec/java_home -v 21+) \
+  firebase emulators:exec --only firestore 'vitest run'   # firestore.rules
+```
+
+---
+
 ## Layout
 
 ```
-server/src/gates/redact.ts    Gate 1 — pattern and label rules, assertClean
-server/src/gates/compute.ts   Gate 2 — schema with no literal node, evaluator
-server/src/gemini.ts          Provider, model ladder, injection detection
-server/src/auth.ts            Firebase ID-token middleware
-server/src/ratelimit.ts       Per-UID daily bucket
-server/src/receipts.ts        Trust Ledger writer, Admin SDK only
-server/src/spans.ts           Document text into labelled spans
-web/src/App.tsx               UI, redaction reveal, receipts
-firestore.rules               Owner-bound access, server-only writes
-CUSTOM_INSTRUCTIONS.md        AI Studio Custom Instructions used to build this
+server/src/gates/redact.ts       Gate 1 — pattern and label rules, assertClean
+server/src/gates/compute.ts      Gate 2 — schema with no literal node, evaluator, trace
+server/src/replay.ts             Recorded plans, bound by row label not span id
+server/src/gemini.ts             Provider, model ladder, injection detection
+server/src/app.ts                Routes and the request pipeline
+server/src/validate.ts           Typed edge validation and size ceilings
+server/src/security.ts           CSP and the rest of the header policy
+server/src/auth.ts               Firebase ID-token middleware
+server/src/ratelimit.ts          Per-UID and service-wide daily budgets
+server/src/receipts.ts           Trust Ledger writer, Admin SDK only
+server/src/spans.ts              Document text into labelled spans
+web/src/App.tsx                  Layout, scenarios, stale-receipt detection
+web/src/components/Airlock.tsx   The two-door pipeline, live per request
+web/src/components/Receipt.tsx   The working, cited rows, and what the model saw
+web/src/components/Ledger.tsx    Trust Ledger, expandable per receipt
+firestore.rules                  Owner-bound access, server-only writes
+CUSTOM_INSTRUCTIONS.md           AI Studio Custom Instructions used to build this
 ```
 
 ## Licence
