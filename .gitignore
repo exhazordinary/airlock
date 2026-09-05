@@ -29,3 +29,12 @@ vitest.config.*
 # agent working files
 AGENTS.md
 STATE.md
+
+# local preview harness
+web/preview.html
+web/preview/
+web/src/preview.tsx
+server/src/fixture-docs.ts
+
+# local rules test harness
+rules-tests/
