@@ -346,12 +346,17 @@ proven, not implementation detail.
 | `gemini` | SDK retries, per-attempt and total latency bounded; provider errors sanitised before they reach a caller |
 | `app` | Anonymous and forged tokens rejected; malformed and oversized bodies refused before quota is charged; injection blocked before the provider; Gate 1 holds on the wire; security headers present |
 | `rules` | User B cannot read or list user A's receipts; nobody can create, rewrite or delete one from a client; the service budget is invisible to clients |
+| `components` | A refusal renders no figure at all; masked rows show their token and never the original; a stale receipt says so; the ledger tells an empty trail apart from a failed read |
 
 ```bash
-cd server && npm test                        # gates, provider, replay, routes
+cd server && npm test                        # gates, provider, replay, routes, errors
+cd web    && npm test                        # receipt, pipeline and ledger rendering
 JAVA_HOME=$(/usr/libexec/java_home -v 21+) \
   firebase emulators:exec --only firestore 'vitest run'   # firestore.rules
 ```
+
+The component suite asserts the claim the product is named for: on any refusal the UI
+must render **no figure at all**, not a greyed-out or crossed-through one.
 
 ---
 
