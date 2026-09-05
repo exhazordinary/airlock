@@ -47,7 +47,6 @@ const looksNumeric = (text: string): boolean => /^[\d,.\s()%-]+$/.test(text.trim
 
 export class Redactor {
   #tokens = new Map<string, string>();
-  #originals = new Map<string, string>();
   #counts = new Map<RedactionKind, number>();
 
   get ledger(): Partial<Record<RedactionKind, number>> {
@@ -63,7 +62,6 @@ export class Redactor {
     this.#counts.set(kind, next);
     const token = `[${kind}_${next}]`;
     this.#tokens.set(key, token);
-    this.#originals.set(token, original);
     return token;
   }
 
@@ -76,14 +74,6 @@ export class Redactor {
       new RegExp(ACCOUNT_CONTEXT.source, ACCOUNT_CONTEXT.flags),
       (_match, label: string, value: string) => `${label}${this.#mint("ACCT", value)}`,
     );
-    return out;
-  }
-
-  unmask(text: string): string {
-    let out = text;
-    for (const [token, original] of this.#originals) {
-      out = out.split(token).join(original);
-    }
     return out;
   }
 

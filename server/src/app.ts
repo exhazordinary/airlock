@@ -114,11 +114,10 @@ export function createApp() {
       }
     }
 
-    const answer =
-      verdict.status === "VERIFIED" ? redactor.unmask(verdict.answer) : undefined;
+    const answer = verdict.status === "VERIFIED" ? verdict.answer : undefined;
 
     const receiptId = await writeReceipt(uid, {
-      question,
+      question: safeQuestion,
       redactions: redactor.ledger,
       modelSaw,
       model,
@@ -142,7 +141,7 @@ export function createApp() {
 
     res.json({
       receiptId,
-      question,
+      question: safeQuestion,
       verdict: verdict.status,
       answer,
       reason: verdict.status === "CANNOT_VERIFY" ? verdict.reason : undefined,
