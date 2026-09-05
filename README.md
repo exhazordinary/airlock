@@ -32,6 +32,26 @@ used for any other question:
 The walkthrough can be dismissed and reopened. It is navigation through the product,
 not a separate demo surface.
 
+## Beyond the starter lab
+
+The codelab's authenticated journal proved the four required services could work
+together. AIRLOCK keeps that foundation, then changes the trust model rather than
+adding another chatbot feature:
+
+| Starter pattern | AIRLOCK extension |
+|---|---|
+| Gemini writes an answer | Gemini can write only a number-free computation plan; the server calculates the answer |
+| A prompt asks the model to handle data safely | Gate 1 masks Malaysian PII in code, with a provider-layer `assertClean` backstop |
+| History stores messages | Firestore stores immutable, server-written proof receipts under the authenticated UID |
+| A demo depends on live model quota | Recorded plans replace only Gemini; both deterministic gates still run against the current document |
+| Errors are generic failures | Refusals explain what could not be proven while rendering no unverified figure |
+
+The checked-in [Google AI Studio Custom Instructions](CUSTOM_INSTRUCTIONS.md) supplied
+the five-zone threat lens, secure Firebase boundaries, Secret Manager rule, fallback
+expectations, and testable walkthrough requirements used during development. The
+repository's threat model, tests, commit history, and deployed behavior show how those
+instructions became implementation rather than prompt-only claims.
+
 ---
 
 ## The receipt

@@ -16,10 +16,10 @@ A private assistant for household paperwork — payslips, utility bills, tenancy
 agreements, insurance letters, medical bills. Sign in with Google, add a document,
 ask questions about it.
 
-It keeps the starter journal app's skeleton exactly:
+It retains the starter lab's required foundation:
 `auth -> private dashboard -> Gemini question -> save receipt to Firestore -> history`.
-Every base component is retained and load-bearing. What changed is *what* you journal
-(paperwork, not feelings) and that history gained a purpose: the Trust Ledger.
+What changed is the trust model: paperwork replaces open-ended journalling, Gemini
+creates a number-free plan, and history becomes a server-written proof ledger.
 
 ## 2. Why it scores
 
@@ -31,14 +31,15 @@ line item — this is a craft rubric.
 | Authenticity | Glass-box AI with deterministic gates, not a codelab fork |
 | Security | Security is the visible product surface, demoed live |
 | Stability | Gates degrade to "cannot verify", never to a wrong answer |
-| Usability | The "what the model actually saw" reveal is the hook |
+| Usability | A four-step judge walkthrough leads to auditable receipts in plain language |
 
 ---
 
 ## 3. Gate 1 — Redaction (inbound)
 
 Deterministic, server-side, running before the Gemini call exists in the code path.
-Malaysian PII is masked to stable tokens and un-masked locally on return.
+Malaysian PII is masked to stable tokens. Original values remain in the user's document
+field and are never reconstructed from Gemini output.
 
 | Entity | Token |
 |---|---|
@@ -99,20 +100,20 @@ equation whose operands carry the row label they came from, a marker distinguish
 allowlisted constant from a document figure, and the cited source rows beneath. The UI
 draws it as a tally and exports it as plain text.
 
-### 4b. Offline mode
+### 4b. Demo-safe mode
 
-Free-tier quota can end a demo. Offline mode substitutes **only the model**, replaying a
-plan captured from a real Gemini run and addressed by row label rather than span id.
+Free-tier quota can end a demo. Demo-safe mode substitutes **only the model**, replaying
+a plan captured from a real Gemini run and addressed by row label rather than span id.
 Both gates still run live against the document on screen: an edited figure is recomputed
 rather than repeated, and a question with no recording is refused rather than invented.
 It is also the automatic fallback on provider failure, and every answer it produces is
 labelled `recorded plan` on its receipt.
 
-## 5. Trust Ledger
+## 5. Previous checks (Trust Ledger)
 
 One server-written audit record per interaction, under the user's UID: redactions
-applied, model used, verdict, latency, and injection flags. Surfaced as a
-"Receipts" tab.
+applied, model used, verdict, latency, and injection flags. Surfaced as the expandable
+Previous checks list.
 
 Client writes are denied by security rules. A user can read their receipts; they
 cannot forge one.
@@ -185,5 +186,6 @@ rather than producing a figure.
 - [x] Public working Cloud Run URL
 - [x] Public repo with frontend, backend, README, `firestore.rules`, reproduction config
 - [ ] Social post carrying `#AccelerateAIwithCloudRun`
-- [ ] Brief description naming Firebase Auth, Firestore, Cloud Run and Gemini
+- [x] Brief description naming Firebase Auth, Firestore, Cloud Run and Gemini prepared
+  in the README
 - [ ] All fields in the Ideathon Prototype Submission tab

@@ -20,7 +20,8 @@ Before generating code, reason across all five zones and state the mitigation fo
 
 ## 2. Secure coding standards
 
-- Validate and bound every input. Cap request bodies at 1 MB.
+- Validate and bound every input. Cap JSON bodies at 256 KB, documents at 20,000
+  characters, and questions at 500 characters.
 - Treat every model response as untrusted input. Parse defensively; never trust shape.
 - Prompt-injection defence is structural, not textual: the model's output grammar
   cannot express a raw number, so a persuaded model still cannot fabricate a figure.
