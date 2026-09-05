@@ -1,64 +1,92 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
 import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
-import { api, auth, db, signIn, signOut, watchAuth } from "./firebase";
-import { DEMO_INJECTION, DEMO_PAYSLIP, DEMO_QUESTION } from "./demo";
+import { api, db, signIn, signOut, watchAuth } from "./firebase";
+import { DEFAULT_SCENARIO, SCENARIOS } from "./demo";
+import type { AskResponse, ReceiptRow } from "./types";
+import Airlock from "./components/Airlock";
+import Receipt from "./components/Receipt";
+import Ledger from "./components/Ledger";
 import "./styles.css";
 
-interface AskResponse {
-  receiptId: string;
-  verdict: "VERIFIED" | "CANNOT_VERIFY";
-  answer?: string;
-  reason?: string;
-  value?: number;
-  citedSpans?: string[];
-  redactions: Record<string, number>;
-  modelSaw: string;
-  model: string | null;
-  injectionFlagged: boolean;
-  quota: { used: number; limit: number };
-}
+const fingerprint = (doc: string, question: string, mode: string) =>
+  `${mode} ${question} ${doc}`;
 
-interface ReceiptRow {
-  id: string;
-  question?: string;
-  verdict?: string;
-  model?: string | null;
-  latencyMs?: number;
-  injectionFlagged?: boolean;
+function SignedOut({ onSignIn, error }: { onSignIn: () => void; error: string }) {
+  return (
+    <main className="center">
+      <p className="eyebrow">Gen AI Academy APAC · Cohort 3</p>
+      <h1>AIRLOCK</h1>
+      <p className="lede">
+        An AI that hands you a receipt for every answer. Two deterministic gates flank the
+        model: nothing sensitive goes in, nothing unproven comes out.
+      </p>
+      <ul className="claims">
+        <li><strong>Gate 1</strong> masks personal data in code, before a model call exists.</li>
+        <li><strong>Gate 2</strong> recomputes every figure from your own document.</li>
+        <li><strong>Receipt</strong> records what was sent, what was cited, and what was proved.</li>
+      </ul>
+      <button className="primary" onClick={onSignIn}>Sign in with Google</button>
+      {error && <p className="err" role="alert">{error}</p>}
+    </main>
+  );
 }
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
-  const [doc, setDoc] = useState(DEMO_PAYSLIP);
-  const [question, setQuestion] = useState(DEMO_QUESTION);
+  const [doc, setDoc] = useState(DEFAULT_SCENARIO.document);
+  const [question, setQuestion] = useState(DEFAULT_SCENARIO.question);
+  const [offline, setOffline] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<AskResponse | null>(null);
-  const [showModelView, setShowModelView] = useState(false);
+  const [askedFor, setAskedFor] = useState("");
   const [receipts, setReceipts] = useState<ReceiptRow[]>([]);
+  const [ledgerError, setLedgerError] = useState("");
+  const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => watchAuth((u) => { setUser(u); setReady(true); }), []);
 
   useEffect(() => {
-    if (!user) { setReceipts([]); return; }
+    if (!user) { setReceipts([]); setLedgerError(""); return; }
     const q = query(
       collection(db, `users/${user.uid}/receipts`),
       orderBy("createdAt", "desc"),
-      limit(8),
+      limit(12),
     );
-    return onSnapshot(q, (snap) =>
-      setReceipts(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ReceiptRow)),
+    return onSnapshot(
+      q,
+      (snap) => {
+        setLedgerError("");
+        setReceipts(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ReceiptRow));
+      },
+      (e) => setLedgerError(e.message),
     );
   }, [user]);
 
+  const mode = offline ? "replay" : "live";
+  const stale = Boolean(result) && askedFor !== fingerprint(doc, question, mode);
+
+  const status = useMemo(() => {
+    if (busy) return "Checking. Gate 1 is masking your document.";
+    if (error) return `Request failed. ${error}`;
+    if (!result) return "";
+    return result.verdict === "VERIFIED"
+      ? `Verified. The answer is ${result.value}.`
+      : `Cannot verify. ${result.reason ?? ""}`;
+  }, [busy, error, result]);
+
   async function ask() {
+    if (busy) return;
     setBusy(true);
     setError("");
-    setResult(null);
+    const asked = fingerprint(doc, question, mode);
     try {
-      setResult(await api<AskResponse>("/api/ask", { document: doc, question }));
+      const res = await api<AskResponse>("/api/ask", { document: doc, question, mode });
+      setResult(res);
+      setAskedFor(asked);
+      requestAnimationFrame(() => resultRef.current?.focus());
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -66,126 +94,122 @@ export default function App() {
     }
   }
 
-  if (!ready) return <div className="center"><p>Loading…</p></div>;
+  if (!ready) {
+    return <main className="center"><p role="status">Loading AIRLOCK</p></main>;
+  }
 
   if (!user) {
     return (
-      <div className="center">
-        <h1>AIRLOCK</h1>
-        <p>
-          An AI that hands you a receipt for every answer. Nothing sensitive goes in,
-          nothing unproven comes out.
-        </p>
-        <button className="primary" onClick={() => signIn().catch((e) => setError(e.message))}>
-          Sign in with Google
-        </button>
-        {error && <p className="err">{error}</p>}
-      </div>
+      <SignedOut
+        onSignIn={() => signIn().catch((e: Error) => setError(e.message))}
+        error={error}
+      />
     );
   }
 
-  const redactionCount = result
-    ? Object.values(result.redactions).reduce((a, b) => a + b, 0)
-    : 0;
-
   return (
     <div className="wrap">
-      <header>
-        <h1>AIRLOCK</h1>
-        <p>Nothing sensitive goes in. Nothing unproven comes out.</p>
-        <span className="muted">{user.email}</span>
-        <button onClick={() => signOut()}>Sign out</button>
+      <header className="masthead">
+        <div className="brand">
+          <h1>AIRLOCK</h1>
+          <p>Nothing sensitive goes in. Nothing unproven comes out.</p>
+        </div>
+        <div className="who">
+          <span className="muted">{user.email}</span>
+          <button onClick={() => signOut()}>Sign out</button>
+        </div>
       </header>
+
+      <Airlock result={stale ? null : result} busy={busy} />
+
+      <nav className="scenarios" aria-label="Demo scenarios">
+        {SCENARIOS.map((s) => {
+          const active = s.document === doc && s.question === question;
+          return (
+            <button
+              key={s.key}
+              className={`scenario${active ? " active" : ""}`}
+              aria-pressed={active}
+              onClick={() => { setDoc(s.document); setQuestion(s.question); }}
+            >
+              <strong>{s.label}</strong>
+              <span>{s.blurb}</span>
+              <span className="expect">{s.expect}</span>
+            </button>
+          );
+        })}
+      </nav>
 
       <div className="grid">
         <section className="panel">
           <h2>Document</h2>
-          <textarea rows={16} value={doc} onChange={(e) => setDoc(e.target.value)} />
-          <div className="row">
-            <button onClick={() => setDoc(DEMO_PAYSLIP)}>Sample payslip</button>
-            <button onClick={() => setDoc(DEMO_INJECTION)}>Injection attempt</button>
-          </div>
+          <label className="sr-only" htmlFor="doc">Document to analyse</label>
+          <textarea
+            id="doc"
+            rows={17}
+            spellCheck={false}
+            value={doc}
+            onChange={(e) => setDoc(e.target.value)}
+          />
+          <p className="hint">
+            Paste anything with <code>Label: value</code> rows. Gate 1 runs on the server
+            before a model call exists, so raw personal data never reaches the provider.
+          </p>
 
-          <h2 style={{ marginTop: "1.4rem" }}>Question</h2>
-          <input type="text" value={question} onChange={(e) => setQuestion(e.target.value)} />
+          <h2 className="spaced">Question</h2>
+          <label className="sr-only" htmlFor="q">Question about the document</label>
+          <input
+            id="q"
+            type="text"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void ask(); }}
+          />
+
           <div className="row">
             <button className="primary" onClick={ask} disabled={busy}>
-              {busy ? "Checking…" : "Ask"}
+              {busy ? "Checking" : "Ask"}
             </button>
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={offline}
+                onChange={(e) => setOffline(e.target.checked)}
+              />
+              <span>Offline mode</span>
+            </label>
             {result && (
-              <span className="muted">
-                {result.quota.used}/{result.quota.limit} today
-              </span>
+              <span className="muted">{result.quota.used}/{result.quota.limit} today</span>
             )}
           </div>
-          {error && <p className="err">{error}</p>}
+          <p className="hint">
+            Offline mode replays a plan recorded from a real model run. Both gates still
+            run live, so an edited figure is recomputed rather than repeated.
+          </p>
+          {error && <p className="err" role="alert">{error}</p>}
         </section>
 
-        <section className="panel">
-          <h2>Answer</h2>
-          {!result && <p className="muted">Ask a question to see a verified answer.</p>}
+        <div className="panel result" tabIndex={-1} ref={resultRef}>
+          <h2>Receipt</h2>
+          <p className="sr-only" role="status" aria-live="polite">{status}</p>
 
-          {result && (
-            <>
-              <div className="row">
-                <span className={`badge ${result.verdict === "VERIFIED" ? "ok" : "no"}`}>
-                  {result.verdict === "VERIFIED" ? "✓ VERIFIED" : "⚠ CANNOT VERIFY"}
-                </span>
-                {result.injectionFlagged && (
-                  <span className="badge flag">⚑ INJECTION LOGGED</span>
-                )}
-                {result.model && <span className="chip">{result.model}</span>}
-              </div>
-
-              {result.verdict === "VERIFIED" ? (
-                <p className="answer">{result.answer}</p>
-              ) : (
-                <p className="reason">{result.reason}</p>
-              )}
-
-              {result.citedSpans?.length ? (
-                <div className="chips">
-                  {result.citedSpans.map((s) => <span key={s} className="chip">{s}</span>)}
-                </div>
-              ) : null}
-
-              <div className="row">
-                <span className="badge ok">{redactionCount} redacted</span>
-                {Object.entries(result.redactions).map(([k, v]) => (
-                  <span key={k} className="chip">{k} × {v}</span>
-                ))}
-              </div>
-
-              <div className="row">
-                <button onClick={() => setShowModelView(!showModelView)}>
-                  {showModelView ? "Hide what the model saw" : "Show what the model saw"}
-                </button>
-              </div>
-              {showModelView && <pre>{result.modelSaw}</pre>}
-            </>
+          {!result && !busy && (
+            <p className="muted">
+              Pick a scenario, or paste your own document, and ask. Every answer arrives
+              with the working attached.
+            </p>
           )}
-        </section>
+          {busy && !result && <p className="muted" aria-hidden="true">Checking</p>}
+          {result && <Receipt result={result} stale={stale} />}
+        </div>
       </div>
 
-      <section className="panel" style={{ marginTop: "1.25rem" }}>
-        <h2>Trust ledger — your receipts</h2>
-        {receipts.length === 0 && <p className="muted">No receipts yet.</p>}
-        {receipts.map((r) => (
-          <div key={r.id} className="receipt">
-            <span className={`badge ${r.verdict === "VERIFIED" ? "ok" : "no"}`}>
-              {r.verdict === "VERIFIED" ? "✓" : "⚠"}
-            </span>
-            <span className="q">{r.question}</span>
-            {r.injectionFlagged && <span className="badge flag">⚑</span>}
-            <span className="chip">{r.model ?? "—"}</span>
-            <span className="chip">{r.latencyMs ?? 0} ms</span>
-          </div>
-        ))}
-        <p className="muted" style={{ marginTop: ".9rem" }}>
-          Receipts are written server-side only. Firestore rules deny client writes, so
-          you can read your audit trail but cannot forge one.
-        </p>
-      </section>
+      <Ledger rows={receipts} error={ledgerError} />
+
+      <footer className="colophon">
+        <span>Firebase Auth · Firestore · Cloud Run · Gemini API</span>
+        <span>asia-southeast1</span>
+      </footer>
     </div>
   );
 }
